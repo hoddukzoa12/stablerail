@@ -126,8 +126,12 @@ impl FixedPoint {
         // (a * b) >> 64 = a_hi*b_hi*2^64 + a_hi*b_lo + a_lo*b_hi + (a_lo*b_lo >> 64)
         let hi_hi = a_hi.checked_mul(b_hi)
             .ok_or_else(|| error!(crate::errors::OrbitalError::MathOverflow))?;
-        let term1 = hi_hi.checked_shl(64)
-            .ok_or_else(|| error!(crate::errors::OrbitalError::MathOverflow))?;
+        // u128::checked_shl only checks shift amount >= 128, NOT value overflow.
+        // hi_hi >= 2^64 means hi_hi << 64 silently wraps in u128.
+        if hi_hi >= (1u128 << 64) {
+            return Err(error!(crate::errors::OrbitalError::MathOverflow));
+        }
+        let term1 = hi_hi << 64;
         let hi_lo = a_hi * b_lo;    // each factor < 2^64, product < 2^128
         let lo_hi = a_lo * b_hi;    // same
         let lo_lo_shifted = (a_lo * b_lo) >> 64;
@@ -169,10 +173,12 @@ impl FixedPoint {
         let quotient = a_abs / b_abs;
         let remainder = a_abs % b_abs;
 
-        // quotient << 64 — check overflow
-        let hi = quotient
-            .checked_shl(FRAC_BITS)
-            .ok_or_else(|| error!(crate::errors::OrbitalError::MathOverflow))?;
+        // i128::checked_shl only checks shift amount >= 128, NOT value overflow.
+        // quotient >= 2^63 means quotient << 64 wraps to negative in i128.
+        if quotient >= (1i128 << 63) {
+            return Err(error!(crate::errors::OrbitalError::MathOverflow));
+        }
+        let hi = quotient << FRAC_BITS;
 
         // Compute (remainder << 64) / b_abs without u128 overflow.
         // remainder < b_abs ≤ i128::MAX, so remainder can be up to ~2^127.
@@ -472,5 +478,30 @@ mod tests {
         let epsilon = FixedPoint::from_raw(2); // minimal tolerance
         assert!(c.approx_eq(third_approx, epsilon),
             "1/3 should be ~0.333, got {:?}", c);
+    }
+
+    #[test]
+    fn test_checked_mul_overflow_large_hi_hi() {
+        // Regression: hi_hi >= 2^64 should return MathOverflow, not silently wrap.
+        // Use values where a_hi * b_hi >= 2^64.
+        // a = 2^32 (integer), b = 2^32 (integer) → hi_hi = 2^64 → overflow
+        let a = FixedPoint::from_raw((1i128 << 32) << FRAC_BITS); // integer part = 2^32
+        let b = FixedPoint::from_raw((1i128 << 32) << FRAC_BITS); // integer part = 2^32
+        assert!(
+            a.checked_mul(b).is_err(),
+            "2^32 * 2^32 should overflow in checked_mul"
+        );
+    }
+
+    #[test]
+    fn test_checked_div_quotient_overflow() {
+        // Regression: quotient >= 2^63 should return MathOverflow, not wrap negative.
+        // a = i64::MAX, b = 0.5 → quotient ≈ 2*(2^63-1) ≈ 2^64 → overflow
+        let a = FixedPoint::from_int(i64::MAX);
+        let half = FixedPoint::from_raw(SCALE / 2); // 0.5 in Q64.64
+        assert!(
+            a.checked_div(half).is_err(),
+            "i64::MAX / 0.5 should overflow in checked_div"
+        );
     }
 }
