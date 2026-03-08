@@ -2,11 +2,11 @@ use anchor_lang::prelude::*;
 
 use crate::state::{PoolState, PositionState};
 use crate::errors::OrbitalError;
-use crate::math::FixedPoint;
+use crate::math::{FixedPoint, sphere::MAX_ASSETS};
 
 #[derive(AnchorSerialize, AnchorDeserialize)]
 pub struct AddLiquidityParams {
-    pub amounts: Vec<u64>,
+    pub amounts: [u64; MAX_ASSETS],
     pub tick_lower: i64,
     pub tick_upper: i64,
 }
@@ -44,9 +44,10 @@ pub fn handler(ctx: Context<AddLiquidity>, params: AddLiquidityParams) -> Result
     let pool = &mut ctx.accounts.pool;
     let position = &mut ctx.accounts.position;
 
+    require!(pool.is_active, OrbitalError::PoolNotActive);
     require!(
-        params.amounts.len() == pool.n_assets as usize,
-        OrbitalError::InvalidLiquidityAmount
+        params.tick_lower < params.tick_upper,
+        OrbitalError::InvalidTickBound
     );
 
     position.bump = ctx.bumps.position;

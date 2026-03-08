@@ -32,6 +32,9 @@ pub enum OrbitalError {
     #[msg("Insufficient liquidity for swap")]
     InsufficientLiquidity,
 
+    #[msg("Pool is not active")]
+    PoolNotActive,
+
     #[msg("Slippage tolerance exceeded")]
     SlippageExceeded,
 

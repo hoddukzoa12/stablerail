@@ -75,7 +75,7 @@ pub fn handler(ctx: Context<ExecuteSettlement>, params: ExecuteSettlementParams)
     let executor = &ctx.accounts.executor;
 
     // Pool active check (mirrors execute_swap)
-    require!(pool.is_active, OrbitalError::InsufficientLiquidity);
+    require!(pool.is_active, OrbitalError::PoolNotActive);
 
     // Token index validation (mirrors execute_swap)
     require!(

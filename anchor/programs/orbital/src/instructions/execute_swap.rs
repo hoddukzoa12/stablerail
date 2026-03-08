@@ -28,7 +28,7 @@ pub struct ExecuteSwap<'info> {
 pub fn handler(ctx: Context<ExecuteSwap>, params: SwapParams) -> Result<()> {
     let pool = &mut ctx.accounts.pool;
 
-    require!(pool.is_active, OrbitalError::InsufficientLiquidity);
+    require!(pool.is_active, OrbitalError::PoolNotActive);
     require!(
         params.token_in_index != params.token_out_index,
         OrbitalError::SameTokenSwap
