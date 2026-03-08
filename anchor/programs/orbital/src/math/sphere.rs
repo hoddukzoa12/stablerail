@@ -55,6 +55,10 @@ impl Sphere {
     /// Compute Σ(r - xᵢ)² from reserve vector
     /// This is ||r⃗ - x⃗||² where r⃗ = (r, r, ..., r)
     pub fn distance_squared(&self, reserves: &[FixedPoint]) -> Result<FixedPoint> {
+        require!(
+            reserves.len() >= self.n as usize,
+            crate::errors::OrbitalError::InvalidAssetCount
+        );
         let mut sum = FixedPoint::zero();
         for &x_i in reserves.iter().take(self.n as usize) {
             let diff = self.radius.checked_sub(x_i)?;

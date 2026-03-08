@@ -74,6 +74,20 @@ pub fn handler(ctx: Context<ExecuteSettlement>, params: ExecuteSettlementParams)
     let audit_entry = &mut ctx.accounts.audit_entry;
     let executor = &ctx.accounts.executor;
 
+    // Pool active check (mirrors execute_swap)
+    require!(pool.is_active, OrbitalError::InsufficientLiquidity);
+
+    // Token index validation (mirrors execute_swap)
+    require!(
+        params.token_in_index != params.token_out_index,
+        OrbitalError::SameTokenSwap
+    );
+    require!(
+        (params.token_in_index as usize) < pool.n_assets as usize
+            && (params.token_out_index as usize) < pool.n_assets as usize,
+        OrbitalError::InvalidTokenIndex
+    );
+
     // Policy checks
     require!(
         allowlist.contains(&executor.key()),

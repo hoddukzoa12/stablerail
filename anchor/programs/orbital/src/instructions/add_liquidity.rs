@@ -44,7 +44,10 @@ pub fn handler(ctx: Context<AddLiquidity>, params: AddLiquidityParams) -> Result
     let pool = &mut ctx.accounts.pool;
     let position = &mut ctx.accounts.position;
 
-    require!(!params.amounts.is_empty(), OrbitalError::InvalidLiquidityAmount);
+    require!(
+        params.amounts.len() == pool.n_assets as usize,
+        OrbitalError::InvalidLiquidityAmount
+    );
 
     position.bump = ctx.bumps.position;
     position.pool = pool.key();
