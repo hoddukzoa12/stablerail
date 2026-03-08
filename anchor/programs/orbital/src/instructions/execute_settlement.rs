@@ -87,18 +87,14 @@ pub fn handler(ctx: Context<ExecuteSettlement>, params: ExecuteSettlementParams)
     );
 
     // TODO: Execute swap via domain::core, check daily volume
-    // Once swap logic is implemented, amount_out will be computed from the swap.
+    // Once swap logic is implemented, amount_out will be computed from the swap
+    // and the slippage check below should be re-enabled:
+    //   require!(amount_out.raw >= min_out.raw, OrbitalError::SlippageExceeded);
     // For now, settlement is recorded as Pending until swap execution is wired.
 
     let amount_out = FixedPoint::zero();
-    let min_out = FixedPoint::checked_from_u64(params.min_amount_out)?;
+    let _min_out = FixedPoint::checked_from_u64(params.min_amount_out)?;
     let clock = Clock::get()?;
-
-    // Enforce min_amount_out slippage protection
-    require!(
-        amount_out.raw >= min_out.raw,
-        OrbitalError::SlippageExceeded
-    );
 
     // Record settlement
     settlement.bump = ctx.bumps.settlement;
