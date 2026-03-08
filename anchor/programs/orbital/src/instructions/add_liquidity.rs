@@ -53,7 +53,7 @@ pub fn handler(ctx: Context<AddLiquidity>, params: AddLiquidityParams) -> Result
     position.tick_lower = FixedPoint::from_int(params.tick_lower);
     position.tick_upper = FixedPoint::from_int(params.tick_upper);
     position.fees_earned = FixedPoint::zero();
-    position.liquidity = FixedPoint::from_u64(params.amounts[0]);
+    position.liquidity = FixedPoint::checked_from_u64(params.amounts[0])?;
     position._reserved = [0u8; 64];
 
     let clock = Clock::get()?;

@@ -27,10 +27,10 @@ pub fn handler(ctx: Context<UpdatePolicy>, params: UpdatePolicyParams) -> Result
     let policy = &mut ctx.accounts.policy;
 
     if let Some(max_trade) = params.max_trade_amount {
-        policy.max_trade_amount = FixedPoint::from_u64(max_trade);
+        policy.max_trade_amount = FixedPoint::checked_from_u64(max_trade)?;
     }
     if let Some(max_daily) = params.max_daily_volume {
-        policy.max_daily_volume = FixedPoint::from_u64(max_daily);
+        policy.max_daily_volume = FixedPoint::checked_from_u64(max_daily)?;
     }
     if let Some(active) = params.is_active {
         policy.is_active = active;

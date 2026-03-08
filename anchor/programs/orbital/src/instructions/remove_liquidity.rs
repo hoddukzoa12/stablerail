@@ -33,7 +33,7 @@ pub fn handler(ctx: Context<RemoveLiquidity>, params: RemoveLiquidityParams) -> 
     let _pool = &mut ctx.accounts.pool;
     let position = &mut ctx.accounts.position;
 
-    let remove_amount = FixedPoint::from_u64(params.liquidity_amount);
+    let remove_amount = FixedPoint::checked_from_u64(params.liquidity_amount)?;
     require!(
         remove_amount.raw <= position.liquidity.raw,
         OrbitalError::InsufficientPositionBalance

@@ -1,6 +1,7 @@
 use anchor_lang::prelude::*;
 
 use crate::state::{PoolState, PolicyState};
+use crate::errors::OrbitalError;
 use crate::math::FixedPoint;
 
 #[derive(AnchorSerialize, AnchorDeserialize)]
@@ -17,6 +18,7 @@ pub struct CreatePolicy<'info> {
     #[account(
         seeds = [b"pool", pool.authority.as_ref()],
         bump = pool.bump,
+        constraint = pool.authority == authority.key() @ OrbitalError::Unauthorized,
     )]
     pub pool: Account<'info, PoolState>,
 
@@ -38,8 +40,8 @@ pub fn handler(ctx: Context<CreatePolicy>, params: CreatePolicyParams) -> Result
     policy.bump = ctx.bumps.policy;
     policy.authority = ctx.accounts.authority.key();
     policy.pool = ctx.accounts.pool.key();
-    policy.max_trade_amount = FixedPoint::from_u64(params.max_trade_amount);
-    policy.max_daily_volume = FixedPoint::from_u64(params.max_daily_volume);
+    policy.max_trade_amount = FixedPoint::checked_from_u64(params.max_trade_amount)?;
+    policy.max_daily_volume = FixedPoint::checked_from_u64(params.max_daily_volume)?;
     policy.current_daily_volume = FixedPoint::zero();
     policy.is_active = true;
     policy._reserved = [0u8; 64];

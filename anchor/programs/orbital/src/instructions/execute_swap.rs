@@ -39,8 +39,8 @@ pub fn handler(ctx: Context<ExecuteSwap>, params: SwapParams) -> Result<()> {
         OrbitalError::InvalidTokenIndex
     );
 
-    let _amount_in = FixedPoint::from_u64(params.amount_in);
-    let _min_out = FixedPoint::from_u64(params.min_amount_out);
+    let _amount_in = FixedPoint::checked_from_u64(params.amount_in)?;
+    let _min_out = FixedPoint::checked_from_u64(params.min_amount_out)?;
 
     // TODO: Implement Torus invariant swap via domain::core::SwapCalculator
 

@@ -52,13 +52,11 @@ impl FixedPoint {
         }
     }
 
-    /// Create from u64 (common for Solana token amounts).
-    /// Safe: u64::MAX (2^64-1) << 64 = 2^128-2^64 which fits in i128 (max 2^127-1)
-    /// only for values ≤ i64::MAX. For larger u64 values, use checked_from_u64.
+    /// Create from u64 — **internal/test use only**.
+    /// Only safe for values ≤ i64::MAX (2^63-1). For n >= 2^63, (n as i128) << 64
+    /// overflows i128::MAX (2^127-1) and wraps to negative.
+    /// All instruction handlers MUST use `checked_from_u64` for user-supplied inputs.
     pub fn from_u64(n: u64) -> Self {
-        // i128 can hold up to 2^127-1. (n as i128) << 64 overflows when n >= 2^63.
-        // For safety, cap at i64::MAX. Values above this are unrealistic for token amounts
-        // (would require > 9.2 quintillion tokens).
         debug_assert!(
             n <= i64::MAX as u64,
             "from_u64: value too large, use checked_from_u64"
@@ -151,6 +149,8 @@ impl FixedPoint {
     /// Checked division: (a << 64) / b
     /// Uses split-multiply technique to avoid 256-bit intermediate overflow:
     ///   result = (a_raw / b_raw) << 64 + ((a_raw % b_raw) << 64) / b_raw
+    /// The remainder term uses iterative long-division to avoid u128 overflow
+    /// when remainder >= 2^64.
     pub fn checked_div(self, rhs: Self) -> Result<Self> {
         require!(
             rhs.raw != 0,
@@ -174,10 +174,26 @@ impl FixedPoint {
             .checked_shl(FRAC_BITS)
             .ok_or_else(|| error!(crate::errors::OrbitalError::MathOverflow))?;
 
-        // (remainder << 64) / b_abs — remainder < b_abs, so remainder << 64 fits if b_abs > 0
-        // remainder < b_abs ≤ i128::MAX, and we shift u128 to avoid sign issues
-        let rem_shifted = (remainder as u128) << FRAC_BITS;
-        let lo = (rem_shifted / b_abs as u128) as i128;
+        // Compute (remainder << 64) / b_abs without u128 overflow.
+        // remainder < b_abs ≤ i128::MAX, so remainder can be up to ~2^127.
+        // Direct (remainder as u128) << 64 overflows when remainder >= 2^64.
+        // Use bit-by-bit long division: 64 iterations, each shifting 1 bit.
+        // Invariant: r < d after each subtraction step, so r<<1 < 2*d ≤ 2^128 fits u128.
+        // Result fits in 64 bits since remainder < b_abs ⇒ (remainder<<64)/b_abs < 2^64.
+        let lo = {
+            let d = b_abs as u128;
+            let mut r = remainder as u128;
+            let mut q = 0u128;
+            for _ in 0..FRAC_BITS {
+                r <<= 1;
+                q <<= 1;
+                if r >= d {
+                    r -= d;
+                    q |= 1;
+                }
+            }
+            q as i128
+        };
 
         let result = hi
             .checked_add(lo)
@@ -403,5 +419,58 @@ mod tests {
     fn test_abs() {
         let a = FixedPoint::from_int(-7);
         assert_eq!(a.abs().unwrap(), FixedPoint::from_int(7));
+    }
+
+    #[test]
+    fn test_div_large_remainder() {
+        // Regression: checked_div with large operands where remainder >= 2^64
+        // Previously caused u128 overflow in (remainder as u128) << 64
+        let a = FixedPoint::from_int(100);
+        let b = FixedPoint::from_int(7);
+        let c = a.checked_div(b).unwrap();
+        // 100/7 ≈ 14.285714...
+        let expected = FixedPoint::from_fraction(100, 7).unwrap();
+        let epsilon = FixedPoint::from_raw(2); // minimal tolerance
+        assert!(c.approx_eq(expected, epsilon), "100/7 ≈ {:?}", c);
+        assert!(c.raw > FixedPoint::from_int(14).raw);
+        assert!(c.raw < FixedPoint::from_int(15).raw);
+    }
+
+    #[test]
+    fn test_div_large_values() {
+        // Test division where both operands have large raw values (> 2^64)
+        // This triggers the remainder overflow path
+        let a = FixedPoint::from_int(1_000_000);
+        let b = FixedPoint::from_int(3);
+        let c = a.checked_div(b).unwrap();
+        // 1_000_000 / 3 ≈ 333_333.333...
+        let expected_lo = FixedPoint::from_int(333_333);
+        let expected_hi = FixedPoint::from_int(333_334);
+        assert!(c.raw >= expected_lo.raw && c.raw <= expected_hi.raw,
+            "1000000/3 should be ~333333, got {:?}", c);
+    }
+
+    #[test]
+    fn test_checked_from_u64_overflow() {
+        // Values > i64::MAX should fail with checked_from_u64
+        let big = u64::MAX;
+        assert!(FixedPoint::checked_from_u64(big).is_err());
+
+        // Values <= i64::MAX should succeed
+        let ok = i64::MAX as u64;
+        assert!(FixedPoint::checked_from_u64(ok).is_ok());
+    }
+
+    #[test]
+    fn test_div_fractional_result() {
+        // 1 / 3 = 0.333... — divisor > dividend, large remainder relative to divisor
+        let a = FixedPoint::from_int(1);
+        let b = FixedPoint::from_int(3);
+        let c = a.checked_div(b).unwrap();
+        // Result should be ~0.333...
+        let third_approx = FixedPoint::from_fraction(1, 3).unwrap();
+        let epsilon = FixedPoint::from_raw(2); // minimal tolerance
+        assert!(c.approx_eq(third_approx, epsilon),
+            "1/3 should be ~0.333, got {:?}", c);
     }
 }

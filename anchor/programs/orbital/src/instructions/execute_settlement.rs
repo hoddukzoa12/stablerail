@@ -80,16 +80,25 @@ pub fn handler(ctx: Context<ExecuteSettlement>, params: ExecuteSettlementParams)
         OrbitalError::Unauthorized
     );
 
-    let amount = FixedPoint::from_u64(params.amount);
+    let amount = FixedPoint::checked_from_u64(params.amount)?;
     require!(
         amount.raw <= policy.max_trade_amount.raw,
         OrbitalError::PolicyLimitExceeded
     );
 
     // TODO: Execute swap via domain::core, check daily volume
+    // Once swap logic is implemented, amount_out will be computed from the swap.
+    // For now, settlement is recorded as Pending until swap execution is wired.
 
     let amount_out = FixedPoint::zero();
+    let min_out = FixedPoint::checked_from_u64(params.min_amount_out)?;
     let clock = Clock::get()?;
+
+    // Enforce min_amount_out slippage protection
+    require!(
+        amount_out.raw >= min_out.raw,
+        OrbitalError::SlippageExceeded
+    );
 
     // Record settlement
     settlement.bump = ctx.bumps.settlement;
@@ -101,7 +110,7 @@ pub fn handler(ctx: Context<ExecuteSettlement>, params: ExecuteSettlementParams)
     settlement.amount_in = amount;
     settlement.amount_out = amount_out;
     settlement.execution_price = FixedPoint::zero();
-    settlement.status = SettlementStatus::Executed;
+    settlement.status = SettlementStatus::Pending;
     settlement.executed_at = clock.unix_timestamp;
     settlement.nonce = params.nonce;
     settlement._reserved = [0u8; 64];
