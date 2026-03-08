@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-pub const MAX_ALLOWLIST_SIZE: usize = 50;
+pub const MAX_ALLOWLIST_SIZE: usize = 20;
 
 #[account]
 pub struct AllowlistState {

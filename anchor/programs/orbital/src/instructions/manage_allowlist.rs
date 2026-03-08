@@ -32,7 +32,7 @@ pub struct ManageAllowlist<'info> {
         seeds = [b"allowlist", policy.key().as_ref()],
         bump,
     )]
-    pub allowlist: Account<'info, AllowlistState>,
+    pub allowlist: Box<Account<'info, AllowlistState>>,
 
     pub system_program: Program<'info, System>,
 }

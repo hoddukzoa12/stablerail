@@ -31,7 +31,7 @@ pub struct AddLiquidity<'info> {
             b"position",
             pool.key().as_ref(),
             provider.key().as_ref(),
-            &Clock::get()?.unix_timestamp.to_le_bytes(),
+            &pool.position_count.to_le_bytes(),
         ],
         bump,
     )]
@@ -59,6 +59,10 @@ pub fn handler(ctx: Context<AddLiquidity>, params: AddLiquidityParams) -> Result
     let clock = Clock::get()?;
     position.created_at = clock.unix_timestamp;
     position.updated_at = clock.unix_timestamp;
+
+    // Increment pool position counter for next PDA derivation
+    pool.position_count = pool.position_count.checked_add(1)
+        .ok_or(OrbitalError::MathOverflow)?;
 
     // TODO: Full liquidity addition logic via domain::liquidity
 

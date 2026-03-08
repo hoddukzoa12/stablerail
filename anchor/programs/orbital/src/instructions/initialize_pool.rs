@@ -43,7 +43,7 @@ pub fn handler(ctx: Context<InitializePool>, params: InitPoolParams) -> Result<(
     pool.authority = ctx.accounts.authority.key();
     pool.n_assets = params.n_assets;
     pool.fee_rate_bps = params.fee_rate_bps;
-    pool.is_active = false;
+    pool.is_active = true;
     pool.tick_count = 0;
     pool.total_volume = FixedPoint::zero();
     pool.total_fees = FixedPoint::zero();
@@ -55,7 +55,8 @@ pub fn handler(ctx: Context<InitializePool>, params: InitPoolParams) -> Result<(
     pool.reserves = [FixedPoint::zero(); MAX_ASSETS];
     pool.token_mints = [Pubkey::default(); MAX_ASSETS];
     pool.token_vaults = [Pubkey::default(); MAX_ASSETS];
-    pool._reserved = [0u8; 128];
+    pool.position_count = 0;
+    pool._reserved = [0u8; 120];
 
     let clock = Clock::get()?;
     pool.created_at = clock.unix_timestamp;

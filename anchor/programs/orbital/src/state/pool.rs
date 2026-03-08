@@ -20,13 +20,16 @@ pub struct PoolState {
     pub total_volume: FixedPoint,
     pub total_fees: FixedPoint,
     pub created_at: i64,
-    pub _reserved: [u8; 128],
+    /// Monotonically incrementing counter for position PDA derivation
+    pub position_count: u64,
+    pub _reserved: [u8; 120],
 }
 
 impl PoolState {
+    // +8 for position_count, -8 from _reserved (120 instead of 128) = same total
     pub const SIZE: usize = 8 + 1 + 32 + 17 + (16 * MAX_ASSETS) + 1
         + (32 * MAX_ASSETS) + (32 * MAX_ASSETS) + 2 + 16 + 16 + 16 + 16
-        + 2 + 1 + 16 + 16 + 8 + 128;
+        + 2 + 1 + 16 + 16 + 8 + 8 + 120;
 
     pub fn active_reserves(&self) -> &[FixedPoint] {
         &self.reserves[..self.n_assets as usize]

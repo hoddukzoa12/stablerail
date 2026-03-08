@@ -26,19 +26,19 @@ pub struct ExecuteSettlement<'info> {
         seeds = [b"pool", pool.authority.as_ref()],
         bump = pool.bump,
     )]
-    pub pool: Account<'info, PoolState>,
+    pub pool: Box<Account<'info, PoolState>>,
 
     #[account(
         constraint = policy.pool == pool.key() @ OrbitalError::PolicyNotFound,
         constraint = policy.is_active @ OrbitalError::SettlementPolicyViolation,
     )]
-    pub policy: Account<'info, PolicyState>,
+    pub policy: Box<Account<'info, PolicyState>>,
 
     #[account(
         seeds = [b"allowlist", policy.key().as_ref()],
         bump = allowlist.bump,
     )]
-    pub allowlist: Account<'info, AllowlistState>,
+    pub allowlist: Box<Account<'info, AllowlistState>>,
 
     #[account(
         init,
@@ -52,7 +52,7 @@ pub struct ExecuteSettlement<'info> {
         ],
         bump,
     )]
-    pub settlement: Account<'info, SettlementState>,
+    pub settlement: Box<Account<'info, SettlementState>>,
 
     #[account(
         init,
@@ -61,7 +61,7 @@ pub struct ExecuteSettlement<'info> {
         seeds = [b"audit", settlement.key().as_ref()],
         bump,
     )]
-    pub audit_entry: Account<'info, AuditEntryState>,
+    pub audit_entry: Box<Account<'info, AuditEntryState>>,
 
     pub system_program: Program<'info, System>,
 }
