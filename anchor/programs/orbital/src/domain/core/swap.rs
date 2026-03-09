@@ -414,74 +414,46 @@ mod tests {
 
     #[test]
     fn test_swap_succeeds_when_reserve_near_radius() {
-        // When token_in reserve is very close to radius, mid_price denominator
-        // approaches zero. The swap should still succeed (slippage = 0) instead
-        // of aborting with DivisionByZero.
+        // When reserve_in == radius, mid_price denominator is zero.
+        // The swap must not abort with DivisionByZero; slippage defaults to 0.
         let mut pool = init_pool(3, 1_000);
         pool.fee_rate_bps = 0;
 
         let r = pool.sphere.radius;
+        let q = pool.reserves[2]; // equal-price reserve
 
-        // Push token 0 reserve very close to r by directly setting it.
-        // To keep sphere invariant valid, compute token 1 reserve analytically:
-        //   (r - x0)^2 + (r - x1)^2 + (r - x2)^2 = r^2
-        // Set x0 = r (exactly), x2 unchanged at q = r(1-1/√3).
-        // Then (r-x1)^2 = r^2 - (r-x2)^2
-        let q = pool.reserves[2]; // original equal-price reserve
-
-        // Set x0 = r exactly
+        // Set x0 = r exactly, then solve for x1 to preserve sphere invariant:
+        //   (r-x1)^2 = r^2 - (r-q)^2
         pool.reserves[0] = r;
-
-        // (r - x1)^2 = r^2 - (r - q)^2
         let r_sq = r.squared().unwrap();
-        let c = r.checked_sub(q).unwrap(); // r - q = r/√n
+        let c = r.checked_sub(q).unwrap();
         let c_sq = c.squared().unwrap();
         let rem = r_sq.checked_sub(c_sq).unwrap();
-        let x1_offset = rem.sqrt().unwrap(); // r - x1 = √(r^2 - c^2)
-        pool.reserves[1] = r.checked_sub(x1_offset).unwrap();
-
-        // Update caches for the new reserves
+        pool.reserves[1] = r.checked_sub(rem.sqrt().unwrap()).unwrap();
         update_caches(&mut pool).unwrap();
 
-        // Now attempt a small swap with token 0 (at radius) as token_in.
-        // Since mid_price_den = r - r = 0, the old code would abort.
-        // With the fix, it should return slippage_bps = 0.
+        // Compute amount_out analytically for a 1-unit trade:
+        //   new_x0 = r + 1 → (r - (r+1))^2 = 1
+        //   (r-x1')^2 = r^2 - c^2 - 1
         let amount_in = FixedPoint::from_int(1);
-
-        // Compute valid amount_out: since x0 = r, adding to it goes beyond r.
-        // The sphere invariant will require reducing token_out proportionally.
-        // Use a small amount_out that satisfies invariant.
-        // For simplicity, use a tiny amount_out and rely on invariant check.
-        // Actually, with x0 already at r, adding more pushes it past r.
-        // We need amount_out from token 1 to compensate.
-        // Let's compute: new_x0 = r + 1, need (r - (r+1))^2 + (r-x1')^2 + (r-q)^2 = r^2
-        // (r - r - 1)^2 = 1, so (r-x1')^2 = r^2 - 1 - c^2 = r^2 - c^2 - 1
-        let new_rem = r_sq.checked_sub(c_sq).unwrap()
-            .checked_sub(FixedPoint::one()).unwrap();
+        let new_rem = rem.checked_sub(FixedPoint::one()).unwrap();
         if new_rem.raw < 0 {
-            // If this pool size doesn't support the trade, just verify the
-            // guard doesn't abort with DivisionByZero (i.e., it returns an
-            // InvariantViolation instead). The key: no DivisionByZero panic.
-            return;
+            return; // pool too small for this trade; no DivisionByZero is the key
         }
-        let new_x1_offset = new_rem.sqrt().unwrap();
-        let new_x1 = r.checked_sub(new_x1_offset).unwrap();
-        let old_x1 = pool.reserves[1];
-        let amount_out = old_x1.checked_sub(new_x1).unwrap();
-
+        let new_x1 = r.checked_sub(new_rem.sqrt().unwrap()).unwrap();
+        let amount_out = pool.reserves[1].checked_sub(new_x1).unwrap();
         if amount_out.raw <= 0 {
-            return; // trade not viable at this scale, but no DivisionByZero
+            return; // trade not viable at this scale
         }
 
-        let min_out = FixedPoint::from_int(0);
-        let result = execute_swap(&mut pool, 0, 1, amount_in, amount_out, min_out);
+        let result = execute_swap(
+            &mut pool, 0, 1, amount_in, amount_out, FixedPoint::from_int(0),
+        );
 
-        // The swap may succeed or fail on invariant — but must NOT fail with DivisionByZero
+        // May succeed or fail on invariant, but must NOT fail with DivisionByZero
         match result {
-            Ok(sr) => assert_eq!(sr.slippage_bps, 0), // infinite mid → 0 slippage
+            Ok(sr) => assert_eq!(sr.slippage_bps, 0),
             Err(e) => {
-                // Acceptable errors: InvariantViolation, InsufficientLiquidity, etc.
-                // NOT acceptable: DivisionByZero
                 let err_str = format!("{:?}", e);
                 assert!(
                     !err_str.contains("DivisionByZero"),

@@ -159,6 +159,12 @@ pub fn compute_new_alpha(
 mod tests {
     use super::*;
 
+    // ── Test helpers ──
+
+    fn make_sphere(r: i64, n: u8) -> Sphere {
+        Sphere { radius: FixedPoint::from_int(r), n }
+    }
+
     // ── TorusParams ──
 
     #[test]
@@ -237,7 +243,7 @@ mod tests {
     #[test]
     fn test_orthogonal_radius_at_equal_price_point() {
         // At α = r·√n - r (equal price point), s should be > 0
-        let sphere = Sphere { radius: FixedPoint::from_int(100), n: 3 };
+        let sphere = make_sphere(100, 3);
         let eq_point = sphere.equal_price_point().unwrap();
         // α at equal price = n * eq_point / √n = √n * eq_point
         let n_fp = FixedPoint::from_int(3);
@@ -250,7 +256,7 @@ mod tests {
     #[test]
     fn test_orthogonal_radius_at_diagonal() {
         // At α = r·√n (offset = 0), s = √(r²) = r (max orthogonal room)
-        let sphere = Sphere { radius: FixedPoint::from_int(100), n: 3 };
+        let sphere = make_sphere(100, 3);
         let n_fp = FixedPoint::from_int(3);
         let sqrt_n = n_fp.sqrt().unwrap();
         let alpha_diag = sphere.radius.checked_mul(sqrt_n).unwrap();
@@ -261,7 +267,7 @@ mod tests {
     #[test]
     fn test_orthogonal_radius_at_equal_price_zero() {
         // At equal price point α = r(√n - 1), offset = -r, s = √(r² - r²) = 0
-        let sphere = Sphere { radius: FixedPoint::from_int(100), n: 3 };
+        let sphere = make_sphere(100, 3);
         let n_fp = FixedPoint::from_int(3);
         let sqrt_n = n_fp.sqrt().unwrap();
         let one = FixedPoint::one();
@@ -273,7 +279,7 @@ mod tests {
 
     #[test]
     fn test_orthogonal_radius_positive_for_valid_alpha() {
-        let sphere = Sphere { radius: FixedPoint::from_int(100), n: 3 };
+        let sphere = make_sphere(100, 3);
         // Alpha somewhere in the valid range
         let alpha = FixedPoint::from_int(150);
         let s = orthogonal_radius(&sphere, alpha).unwrap();
@@ -282,28 +288,22 @@ mod tests {
 
     #[test]
     fn test_orthogonal_radius_rejects_large_negative_radicand() {
-        // Alpha far outside valid range → radicand is very negative → should error
-        let sphere = Sphere { radius: FixedPoint::from_int(100), n: 3 };
-        // Alpha = 0 → offset = 0 - r√3 ≈ -173 → offset² ≈ 29929 >> r²=10000
-        // radicand = 10000 - 29929 ≈ -19929 (way beyond epsilon)
-        let alpha = FixedPoint::zero();
-        let result = orthogonal_radius(&sphere, alpha);
+        // Alpha far outside valid range → large negative radicand → error
+        let sphere = make_sphere(100, 3);
+        let result = orthogonal_radius(&sphere, FixedPoint::zero());
         assert!(result.is_err(), "Large negative radicand should be rejected");
     }
 
     #[test]
     fn test_orthogonal_radius_clamps_tiny_negative() {
-        // Radicand just barely negative (within epsilon) → should clamp to zero
-        let sphere = Sphere { radius: FixedPoint::from_int(100), n: 3 };
-        let n_fp = FixedPoint::from_int(3);
-        let sqrt_n = n_fp.sqrt().unwrap();
-
-        // At α = r(√n - 1), radicand should be ≈ 0 but may be slightly negative
-        // due to fixed-point rounding → should clamp to 0, not error
-        let one = FixedPoint::one();
-        let alpha_boundary = sphere.radius.checked_mul(sqrt_n.checked_sub(one).unwrap()).unwrap();
+        // At the boundary α = r(√n - 1), radicand is ~0 but may be slightly
+        // negative from fixed-point rounding → should clamp to 0, not error.
+        let sphere = make_sphere(100, 3);
+        let sqrt_n = FixedPoint::from_int(3).sqrt().unwrap();
+        let alpha_boundary = sphere.radius
+            .checked_mul(sqrt_n.checked_sub(FixedPoint::one()).unwrap())
+            .unwrap();
         let s = orthogonal_radius(&sphere, alpha_boundary).unwrap();
-        // Should be zero or very close to zero (clamped)
         assert!(s.approx_eq(FixedPoint::zero(), FixedPoint::from_int(2)));
     }
 
