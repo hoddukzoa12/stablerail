@@ -1,40 +1,39 @@
-# Anchor Vault Program
+# Orbital Settlement Protocol — Anchor Program
 
-This template includes a simple SOL vault program built with [Anchor](https://www.anchor-lang.com/).
+Solana-native implementation of the [Paradigm Orbital AMM](https://www.paradigm.xyz/2025/06/orbital) with an institutional settlement layer, built with [Anchor](https://www.anchor-lang.com/).
 
-## Pre-deployed Program
+## Program Architecture
 
-The vault program is deployed on **devnet** at:
+Single Anchor program with 4 DDD bounded-context modules:
 
-```
-F4jZpgbtTb6RWNWq6v35fUeiAsRJMrDczVPv9U23yXjB
-```
-
-You can interact with it immediately by connecting your wallet to devnet.
+| Module | Instructions |
+|--------|-------------|
+| **Core** | `initialize_pool`, `execute_swap` |
+| **Liquidity** | `add_liquidity`, `remove_liquidity` |
+| **Policy** | `create_policy`, `update_policy`, `manage_allowlist` |
+| **Settlement** | `execute_settlement` |
 
 ## Deploying Your Own Program
-
-To deploy your own version of the program:
 
 ### 1. Generate a new program keypair
 
 ```bash
 cd anchor
-solana-keygen new -o target/deploy/vault-keypair.json
+solana-keygen new -o target/deploy/orbital-keypair.json
 ```
 
 ### 2. Get the new program ID
 
 ```bash
-solana address -k target/deploy/vault-keypair.json
+solana address -k target/deploy/orbital-keypair.json
 ```
 
 ### 3. Update the program ID
 
 Update the program ID in these files:
 
-- `anchor/Anchor.toml` - Update `vault = "..."` under `[programs.devnet]`
-- `anchor/programs/vault/src/lib.rs` - Update `declare_id!("...")`
+- `anchor/Anchor.toml` — Update `orbital = "..."` under `[programs.devnet]`
+- `anchor/programs/orbital/src/lib.rs` — Update `declare_id!("...")`
 
 ### 4. Build and deploy
 
@@ -56,16 +55,7 @@ cd ..
 npm run codama:js
 ```
 
-This updates the generated client code in `app/generated/vault/` with your new program ID.
-
-## Program Overview
-
-The vault program allows users to:
-
-- **Deposit**: Send SOL to a personal vault PDA (Program Derived Address)
-- **Withdraw**: Retrieve all SOL from your vault
-
-Each user gets their own vault derived from their wallet address.
+This updates the generated client code in `app/generated/orbital/` with your new program ID.
 
 ## Testing
 
