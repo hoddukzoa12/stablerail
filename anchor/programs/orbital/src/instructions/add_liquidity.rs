@@ -49,6 +49,7 @@ pub fn handler(ctx: Context<AddLiquidity>, params: AddLiquidityParams) -> Result
         params.tick_lower < params.tick_upper,
         OrbitalError::InvalidTickBound
     );
+    require!(params.amounts[0] > 0, OrbitalError::InvalidLiquidityAmount);
 
     position.bump = ctx.bumps.position;
     position.pool = pool.key();
@@ -57,6 +58,10 @@ pub fn handler(ctx: Context<AddLiquidity>, params: AddLiquidityParams) -> Result
     position.tick_lower = FixedPoint::from_int(params.tick_lower);
     position.tick_upper = FixedPoint::from_int(params.tick_upper);
     position.fees_earned = FixedPoint::zero();
+    // STUB: Uses amounts[0] only as placeholder liquidity value.
+    // Full implementation (Issue #11) will accept per-token asymmetric deposits,
+    // validate via sphere invariant checkInvariants(k, r, amounts),
+    // and compute actual liquidity from the deposit geometry.
     position.liquidity = FixedPoint::checked_from_u64(params.amounts[0])?;
     position._reserved = [0u8; 64];
 
@@ -68,7 +73,7 @@ pub fn handler(ctx: Context<AddLiquidity>, params: AddLiquidityParams) -> Result
     pool.position_count = pool.position_count.checked_add(1)
         .ok_or(OrbitalError::MathOverflow)?;
 
-    // TODO: Full liquidity addition logic via domain::liquidity
+    // TODO: Full liquidity addition logic via domain::liquidity (Issue #11)
 
     msg!("Liquidity added by {}", ctx.accounts.provider.key());
     Ok(())

@@ -33,6 +33,11 @@ pub fn handler(ctx: Context<RemoveLiquidity>, params: RemoveLiquidityParams) -> 
     let _pool = &mut ctx.accounts.pool;
     let position = &mut ctx.accounts.position;
 
+    // NOTE: Intentionally no `pool.is_active` guard here.
+    // DeFi emergency exit pattern — LPs must always be able to withdraw,
+    // even when the pool is paused (Curve/Aave/Compound convention).
+    // Reference impl (agrawalx/orbital-pool) also has no pause mechanism.
+
     let remove_amount = FixedPoint::checked_from_u64(params.liquidity_amount)?;
     require!(
         remove_amount.raw <= position.liquidity.raw,
