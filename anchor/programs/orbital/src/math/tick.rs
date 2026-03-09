@@ -190,12 +190,14 @@ impl Tick {
 
     /// Depeg price at maximum reserve imbalance.
     ///
-    /// x_depeg = (k·√n + D) / n  (unclamped x_max)
+    /// x_depeg = min(r, (k·√n + D) / n)
     /// x_other = (k·√n - x_depeg) / (n - 1)
     /// p_depeg = (r - x_depeg) / (r - x_other)
     ///
     /// Represents the worst-case price ratio when one asset reaches
-    /// its maximum reserve and all others are at minimum.
+    /// x_depeg and the remaining n-1 assets are each at x_other.
+    /// Note: x_other == x_min only when n == 2; for n > 2,
+    /// x_other > x_min by D / (n·(n-1)).
     fn compute_depeg_price_from_parts(
         k: FixedPoint,
         r: FixedPoint,
