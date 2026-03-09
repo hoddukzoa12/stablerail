@@ -99,4 +99,8 @@ pub enum OrbitalError {
 
     #[msg("Settlement audit trail creation failed")]
     AuditTrailError,
+
+    // ── Pool Validation (appended for code stability) ──
+    #[msg("Duplicate token mint in pool")]
+    DuplicateTokenMint,
 }
