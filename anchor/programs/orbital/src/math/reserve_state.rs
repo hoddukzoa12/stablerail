@@ -120,6 +120,10 @@ impl ReserveState {
     ///
     /// At equal reserves, price = 1.0 for all pairs.
     /// When x_i < x_j (token i is scarcer), price < 1.0 (less output per unit input).
+    ///
+    /// Note: If a reserve is fully drained (x_i == r), the denominator is zero
+    /// and this returns `DivisionByZero`. Callers should ensure reserves remain
+    /// above zero before querying price, or handle the error accordingly.
     pub fn price(&self, i: usize, j: usize, sphere: &Sphere) -> Result<FixedPoint> {
         require!(
             self.n == sphere.n,
