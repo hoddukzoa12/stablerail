@@ -1,2 +1,8 @@
 // Core Context Domain Logic
-// SwapCalculator, NewtonSolver, TickConsolidator will live here
+// Pool aggregate root, SwapCalculator, NewtonSolver, TickConsolidator
+pub mod pool;
+
+pub use pool::{
+    compute_radius_from_deposit, derive_vault_pda, initialize_pool_reserves, update_caches,
+    verify_invariant,
+};

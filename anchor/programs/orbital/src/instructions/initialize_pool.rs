@@ -9,6 +9,10 @@ use crate::math::{sphere::MAX_ASSETS, FixedPoint, Sphere};
 pub struct InitPoolParams {
     pub n_assets: u8,
     pub fee_rate_bps: u16,
+    /// Per-asset deposit amount in token base units (e.g. lamports for SOL)
+    pub initial_deposit_per_asset: u64,
+    /// Token mints for the pool; only first n_assets entries are used
+    pub token_mints: [Pubkey; MAX_ASSETS],
 }
 
 #[derive(Accounts)]
@@ -61,6 +65,30 @@ pub fn handler(ctx: Context<InitializePool>, params: InitPoolParams) -> Result<(
     let clock = Clock::get()?;
     pool.created_at = clock.unix_timestamp;
 
-    msg!("Pool initialized: {} assets, {} bps fee", params.n_assets, params.fee_rate_bps);
+    // Initialize reserves and sphere via domain logic
+    let deposit_fp = FixedPoint::checked_from_u64(params.initial_deposit_per_asset)?;
+    let n = params.n_assets as usize;
+    let pool_key = pool.key();
+    let program_id = ctx.program_id;
+
+    // Derive vault PDAs for each token mint
+    let mut vault_pubkeys = [Pubkey::default(); MAX_ASSETS];
+    for i in 0..n {
+        let (vault_pda, _bump) = crate::domain::core::pool::derive_vault_pda(
+            &pool_key,
+            &params.token_mints[i],
+            program_id,
+        );
+        vault_pubkeys[i] = vault_pda;
+    }
+
+    crate::domain::core::pool::initialize_pool_reserves(
+        pool,
+        deposit_fp,
+        &params.token_mints[..n],
+        &vault_pubkeys[..n],
+    )?;
+
+    msg!("Pool initialized: {} assets, {} bps fee, deposit {}", params.n_assets, params.fee_rate_bps, params.initial_deposit_per_asset);
     Ok(())
 }
