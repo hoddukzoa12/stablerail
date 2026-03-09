@@ -95,7 +95,7 @@ pub fn derive_vault_pda(
 /// Initialize pool reserves and sphere from equal initial deposits.
 ///
 /// Workflow:
-///   1. Validate inputs (mint/vault counts match n_assets, deposit > 0)
+///   1. Validate inputs (counts, deposit > 0, no duplicate mints)
 ///   2. Compute sphere radius: r = D·√n/(√n-1)
 ///   3. Set all active reserves to deposit amount
 ///   4. Store token mints and vault addresses
@@ -113,7 +113,7 @@ pub fn initialize_pool_reserves(
     let n = pool.n_assets;
     let n_usize = n as usize;
 
-    // Validate inputs
+    // 1. Validate inputs
     require!(
         token_mints.len() == n_usize,
         OrbitalError::InvalidAssetCount
@@ -126,12 +126,21 @@ pub fn initialize_pool_reserves(
         per_asset_deposit.is_positive(),
         OrbitalError::InvalidLiquidityAmount
     );
+    // Reject duplicate mints (O(n²) is fine for n ≤ MAX_ASSETS = 8)
+    for i in 0..n_usize {
+        for j in (i + 1)..n_usize {
+            require!(
+                token_mints[i] != token_mints[j],
+                OrbitalError::DuplicateTokenMint
+            );
+        }
+    }
 
-    // 1. Compute sphere from deposits
+    // 2. Compute sphere from deposits
     let radius = compute_radius_from_deposit(per_asset_deposit, n)?;
     pool.sphere = Sphere { radius, n };
 
-    // 2. Set reserves (all equal at initialization)
+    // 3. Set reserves (all equal at initialization)
     for i in 0..n_usize {
         pool.reserves[i] = per_asset_deposit;
     }
@@ -139,16 +148,16 @@ pub fn initialize_pool_reserves(
         pool.reserves[i] = FixedPoint::zero();
     }
 
-    // 3. Store token references
+    // 4. Store token references
     for i in 0..n_usize {
         pool.token_mints[i] = token_mints[i];
         pool.token_vaults[i] = token_vaults[i];
     }
 
-    // 4. Update caches
+    // 5. Update caches
     update_caches(pool)?;
 
-    // 5. Post-condition: invariant must hold
+    // 6. Post-condition: invariant must hold
     verify_invariant(pool)?;
 
     Ok(())
@@ -386,6 +395,25 @@ mod tests {
         let mints = default_mints(2); // Wrong count
         let vaults = default_vaults(3);
         assert!(initialize_pool_reserves(&mut pool, deposit, &mints, &vaults).is_err());
+    }
+
+    #[test]
+    fn test_initialize_pool_reserves_rejects_duplicate_mints() {
+        let mut pool = make_pool(3);
+        let deposit = FixedPoint::from_int(100);
+        let mint_a = Pubkey::new_unique();
+        let mint_b = Pubkey::new_unique();
+        let mints = vec![mint_a, mint_b, mint_a]; // Duplicate mint_a
+        let vaults = default_vaults(3);
+        assert!(initialize_pool_reserves(&mut pool, deposit, &mints, &vaults).is_err());
+    }
+
+    #[test]
+    fn test_initialize_pool_reserves_accepts_unique_mints() {
+        let pool = init_pool(3, 100);
+        // init_pool uses default_mints which generates unique mints
+        // If we got here without error, unique mints are accepted
+        assert!(pool.sphere.radius.is_positive());
     }
 
     // ══════════════════════════════════════════════

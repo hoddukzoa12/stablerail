@@ -29,6 +29,9 @@ pub enum OrbitalError {
     #[msg("Invalid fee rate")]
     InvalidFeeRate,
 
+    #[msg("Duplicate token mint in pool")]
+    DuplicateTokenMint,
+
     #[msg("Insufficient liquidity for swap")]
     InsufficientLiquidity,
 
