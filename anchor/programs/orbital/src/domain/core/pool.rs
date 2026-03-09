@@ -95,7 +95,7 @@ pub fn derive_vault_pda(
 /// Initialize pool reserves and sphere from equal initial deposits.
 ///
 /// Workflow:
-///   1. Validate inputs (counts, deposit > 0, no duplicate mints)
+///   1. Validate inputs (counts, deposit > 0, no zero/duplicate mints)
 ///   2. Compute sphere radius: r = D·√n/(√n-1)
 ///   3. Set all active reserves to deposit amount
 ///   4. Store token mints and vault addresses
@@ -122,8 +122,12 @@ pub fn initialize_pool_reserves(
         per_asset_deposit.is_positive(),
         OrbitalError::InvalidLiquidityAmount
     );
-    // Reject duplicate mints (O(n²) is fine for n ≤ MAX_ASSETS = 8)
+    // Reject default (zero) and duplicate mints (O(n²) is fine for n ≤ MAX_ASSETS = 8)
     for i in 0..n_usize {
+        require!(
+            token_mints[i] != Pubkey::default(),
+            OrbitalError::InvalidTokenIndex
+        );
         for j in (i + 1)..n_usize {
             require!(
                 token_mints[i] != token_mints[j],
@@ -396,6 +400,17 @@ mod tests {
         let mint_a = Pubkey::new_unique();
         let mint_b = Pubkey::new_unique();
         let mints = vec![mint_a, mint_b, mint_a]; // Duplicate mint_a
+        let vaults = unique_pubkeys(3);
+        assert!(initialize_pool_reserves(&mut pool, deposit, &mints, &vaults).is_err());
+    }
+
+    #[test]
+    fn test_initialize_pool_reserves_rejects_zero_mint() {
+        let mut pool = make_pool(3);
+        let deposit = FixedPoint::from_int(100);
+        let mint_a = Pubkey::new_unique();
+        let mint_b = Pubkey::new_unique();
+        let mints = vec![mint_a, Pubkey::default(), mint_b]; // Zero key
         let vaults = unique_pubkeys(3);
         assert!(initialize_pool_reserves(&mut pool, deposit, &mints, &vaults).is_err());
     }
