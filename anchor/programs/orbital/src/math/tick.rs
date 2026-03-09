@@ -207,8 +207,10 @@ impl Tick {
         let n_minus_1 = n_fp.checked_sub(one)?;
         let k_sqrt_n = k.checked_mul(sqrt_n)?;
 
-        // x_depeg = (k·√n + D) / n
-        let x_depeg = k_sqrt_n.checked_add(d)?.checked_div(n_fp)?;
+        // x_depeg = min(r, (k·√n + D) / n)
+        // Clamped to r: reserves cannot exceed sphere radius.
+        // When x_depeg == r, depeg_price == 0 (complete depeg).
+        let x_depeg = k_sqrt_n.checked_add(d)?.checked_div(n_fp)?.min(r);
 
         // x_other = (k·√n - x_depeg) / (n - 1)
         let x_other = k_sqrt_n.checked_sub(x_depeg)?.checked_div(n_minus_1)?;
@@ -357,8 +359,13 @@ mod tests {
     }
 
     #[test]
-    fn test_depeg_price_less_than_one() {
+    fn test_depeg_price_in_valid_range() {
         let (tick, _) = reference_tick();
+        assert!(
+            tick.depeg_price.raw >= 0,
+            "depeg_price ({:?}) should be >= 0",
+            tick.depeg_price
+        );
         assert!(
             tick.depeg_price.raw < FixedPoint::one().raw,
             "depeg_price ({:?}) should be < 1.0",
