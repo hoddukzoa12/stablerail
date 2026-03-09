@@ -113,11 +113,13 @@ pub fn orthogonal_radius(sphere: &Sphere, alpha: FixedPoint) -> Result<FixedPoin
     let offset_sq = offset.squared()?;
     let radicand = r_sq.checked_sub(offset_sq)?;
 
-    // Clamp tiny negatives from fixed-point rounding
+    // Clamp tiny negatives from fixed-point rounding.
+    // Tolerance ≈ 6e-8 (2^-40): covers squared-operation rounding
+    // while rejecting genuine geometric constraint violations.
     if radicand.raw < 0 {
-        let neg_tolerance = FixedPoint::from_int(-1);
+        const RADICAND_EPSILON_RAW: i128 = -(1i128 << 40);
         require!(
-            radicand.raw >= neg_tolerance.raw,
+            radicand.raw >= RADICAND_EPSILON_RAW,
             OrbitalError::TorusInvariantError
         );
         return Ok(FixedPoint::zero());
@@ -276,6 +278,33 @@ mod tests {
         let alpha = FixedPoint::from_int(150);
         let s = orthogonal_radius(&sphere, alpha).unwrap();
         assert!(s.is_positive());
+    }
+
+    #[test]
+    fn test_orthogonal_radius_rejects_large_negative_radicand() {
+        // Alpha far outside valid range → radicand is very negative → should error
+        let sphere = Sphere { radius: FixedPoint::from_int(100), n: 3 };
+        // Alpha = 0 → offset = 0 - r√3 ≈ -173 → offset² ≈ 29929 >> r²=10000
+        // radicand = 10000 - 29929 ≈ -19929 (way beyond epsilon)
+        let alpha = FixedPoint::zero();
+        let result = orthogonal_radius(&sphere, alpha);
+        assert!(result.is_err(), "Large negative radicand should be rejected");
+    }
+
+    #[test]
+    fn test_orthogonal_radius_clamps_tiny_negative() {
+        // Radicand just barely negative (within epsilon) → should clamp to zero
+        let sphere = Sphere { radius: FixedPoint::from_int(100), n: 3 };
+        let n_fp = FixedPoint::from_int(3);
+        let sqrt_n = n_fp.sqrt().unwrap();
+
+        // At α = r(√n - 1), radicand should be ≈ 0 but may be slightly negative
+        // due to fixed-point rounding → should clamp to 0, not error
+        let one = FixedPoint::one();
+        let alpha_boundary = sphere.radius.checked_mul(sqrt_n.checked_sub(one).unwrap()).unwrap();
+        let s = orthogonal_radius(&sphere, alpha_boundary).unwrap();
+        // Should be zero or very close to zero (clamped)
+        assert!(s.approx_eq(FixedPoint::zero(), FixedPoint::from_int(2)));
     }
 
     // ── compute_new_alpha ──
