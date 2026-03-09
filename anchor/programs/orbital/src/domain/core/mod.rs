@@ -1,5 +1,4 @@
-// Core Context Domain Logic
-// Pool aggregate root, SwapCalculator, NewtonSolver, TickConsolidator
+// Core Context — AMM domain logic (sphere invariant, pool aggregate root)
 pub mod pool;
 
 pub use pool::{

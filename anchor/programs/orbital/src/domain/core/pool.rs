@@ -115,11 +115,7 @@ pub fn initialize_pool_reserves(
 
     // 1. Validate inputs
     require!(
-        token_mints.len() == n_usize,
-        OrbitalError::InvalidAssetCount
-    );
-    require!(
-        token_vaults.len() == n_usize,
+        token_mints.len() == n_usize && token_vaults.len() == n_usize,
         OrbitalError::InvalidAssetCount
     );
     require!(
@@ -172,11 +168,7 @@ mod tests {
         FixedPoint::from_raw(1i128 << 42)
     }
 
-    fn default_mints(n: usize) -> Vec<Pubkey> {
-        (0..n).map(|_| Pubkey::new_unique()).collect()
-    }
-
-    fn default_vaults(n: usize) -> Vec<Pubkey> {
+    fn unique_pubkeys(n: usize) -> Vec<Pubkey> {
         (0..n).map(|_| Pubkey::new_unique()).collect()
     }
 
@@ -211,8 +203,8 @@ mod tests {
     fn init_pool(n: u8, deposit: i64) -> PoolState {
         let mut pool = make_pool(n);
         let deposit_fp = FixedPoint::from_int(deposit);
-        let mints = default_mints(n as usize);
-        let vaults = default_vaults(n as usize);
+        let mints = unique_pubkeys(n as usize);
+        let vaults = unique_pubkeys(n as usize);
         initialize_pool_reserves(&mut pool, deposit_fp, &mints, &vaults).unwrap();
         pool
     }
@@ -378,8 +370,8 @@ mod tests {
     fn test_initialize_pool_reserves_stores_mints_and_vaults() {
         let mut pool = make_pool(3);
         let deposit = FixedPoint::from_int(100);
-        let mints = default_mints(3);
-        let vaults = default_vaults(3);
+        let mints = unique_pubkeys(3);
+        let vaults = unique_pubkeys(3);
         initialize_pool_reserves(&mut pool, deposit, &mints, &vaults).unwrap();
 
         for i in 0..3 {
@@ -392,8 +384,8 @@ mod tests {
     fn test_initialize_pool_reserves_rejects_mismatched_mint_count() {
         let mut pool = make_pool(3);
         let deposit = FixedPoint::from_int(100);
-        let mints = default_mints(2); // Wrong count
-        let vaults = default_vaults(3);
+        let mints = unique_pubkeys(2); // Wrong count
+        let vaults = unique_pubkeys(3);
         assert!(initialize_pool_reserves(&mut pool, deposit, &mints, &vaults).is_err());
     }
 
@@ -404,15 +396,15 @@ mod tests {
         let mint_a = Pubkey::new_unique();
         let mint_b = Pubkey::new_unique();
         let mints = vec![mint_a, mint_b, mint_a]; // Duplicate mint_a
-        let vaults = default_vaults(3);
+        let vaults = unique_pubkeys(3);
         assert!(initialize_pool_reserves(&mut pool, deposit, &mints, &vaults).is_err());
     }
 
     #[test]
     fn test_initialize_pool_reserves_accepts_unique_mints() {
         let pool = init_pool(3, 100);
-        // init_pool uses default_mints which generates unique mints
-        // If we got here without error, unique mints are accepted
+        // init_pool generates unique mints via unique_pubkeys;
+        // reaching here without error confirms acceptance.
         assert!(pool.sphere.radius.is_positive());
     }
 
