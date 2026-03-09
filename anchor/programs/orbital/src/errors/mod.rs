@@ -29,9 +29,6 @@ pub enum OrbitalError {
     #[msg("Invalid fee rate")]
     InvalidFeeRate,
 
-    #[msg("Duplicate token mint in pool")]
-    DuplicateTokenMint,
-
     #[msg("Insufficient liquidity for swap")]
     InsufficientLiquidity,
 
@@ -102,4 +99,8 @@ pub enum OrbitalError {
 
     #[msg("Settlement audit trail creation failed")]
     AuditTrailError,
+
+    // ── Pool Validation (appended for code stability) ──
+    #[msg("Duplicate token mint in pool")]
+    DuplicateTokenMint,
 }
