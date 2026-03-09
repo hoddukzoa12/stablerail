@@ -99,7 +99,6 @@ impl Sphere {
         let denominator = self.radius.checked_sub(reserves[i])?;
 
         numerator.checked_div(denominator)
-            .map_err(|_| error!(crate::errors::OrbitalError::DivisionByZero))
     }
 
     /// Check sphere invariant with default 0.1% tolerance.

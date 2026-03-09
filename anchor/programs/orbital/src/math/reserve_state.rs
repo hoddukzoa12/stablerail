@@ -144,7 +144,6 @@ impl ReserveState {
         let denominator = sphere.radius.checked_sub(x_i)?;
 
         numerator.checked_div(denominator)
-            .map_err(|_| error!(crate::errors::OrbitalError::DivisionByZero))
     }
 
     /// O(1) incremental update after a trade.
