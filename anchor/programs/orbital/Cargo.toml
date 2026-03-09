@@ -1,0 +1,25 @@
+[package]
+name = "orbital"
+version = "0.1.0"
+description = "Orbital Settlement Protocol — Paradigm Orbital AMM on Solana with institutional settlement"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "orbital"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build"]
+
+[dependencies]
+anchor-lang = { version = "0.31.1", features = ["init-if-needed"] }
+anchor-spl = "0.31.1"
+
+[dev-dependencies]
+litesvm = "=0.7.1"
+solana-sdk = "2.3"

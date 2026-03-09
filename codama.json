@@ -1,0 +1,11 @@
+{
+  "idl": "./anchor/target/idl/orbital.json",
+  "scripts": {
+    "js": [
+      {
+        "from": "@codama/renderers-js",
+        "args": ["./app/generated/orbital"]
+      }
+    ]
+  }
+}
