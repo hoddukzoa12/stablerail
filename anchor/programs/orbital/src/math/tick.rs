@@ -73,7 +73,7 @@ impl Tick {
         // Step 3: Compute derived values
         let x_min = Self::compute_x_min_from_parts(k, n_fp, sqrt_n, d)?;
         let x_max = Self::compute_x_max_from_parts(k, r, n_fp, sqrt_n, d)?;
-        let depeg_price = Self::compute_depeg_price_from_parts(k, r, n_fp, sqrt_n, d)?;
+        let depeg_price = Self::compute_depeg_price_from_parts(x_max, k, r, n_fp, sqrt_n)?;
         let capital_efficiency = Self::compute_capital_efficiency(sphere, x_min)?;
         let boundary_sphere_radius = Self::compute_boundary_radius(r, k, sqrt_n)?;
 
@@ -128,6 +128,15 @@ impl Tick {
 
     // ── Private Computation Methods ──
 
+    /// Defensive sqrt: clamp radicand to zero before sqrt.
+    ///
+    /// Fixed-point rounding near tick boundaries can produce tiny negative
+    /// radicands that are theoretically non-negative. This clamps to zero
+    /// instead of propagating a spurious MathOverflow.
+    fn clamped_sqrt(radicand: FixedPoint) -> Result<FixedPoint> {
+        radicand.max(FixedPoint::zero()).sqrt()
+    }
+
     /// Shared discriminant: D = √(k²·n - n·((n-1)·r - k·√n)²)
     ///
     /// This intermediate value appears in x_min, x_max, and depeg_price.
@@ -153,10 +162,7 @@ impl Tick {
 
         // radicand = k²·n - n·inner²
         let radicand = k_sq_n.checked_sub(n_inner_sq)?;
-
-        // Clamp to zero for fixed-point edge cases near tick bounds
-        let radicand_safe = radicand.max(FixedPoint::zero());
-        radicand_safe.sqrt()
+        Self::clamped_sqrt(radicand)
     }
 
     /// x_min = (k·√n - D) / n
@@ -190,7 +196,7 @@ impl Tick {
 
     /// Depeg price at maximum reserve imbalance.
     ///
-    /// x_depeg = min(r, (k·√n + D) / n)
+    /// x_depeg = x_max  (already clamped to r by compute_x_max_from_parts)
     /// x_other = (k·√n - x_depeg) / (n - 1)
     /// p_depeg = (r - x_depeg) / (r - x_other)
     ///
@@ -199,26 +205,21 @@ impl Tick {
     /// Note: x_other == x_min only when n == 2; for n > 2,
     /// x_other > x_min by D / (n·(n-1)).
     fn compute_depeg_price_from_parts(
+        x_max: FixedPoint,
         k: FixedPoint,
         r: FixedPoint,
         n_fp: FixedPoint,
         sqrt_n: FixedPoint,
-        d: FixedPoint,
     ) -> Result<FixedPoint> {
-        let one = FixedPoint::one();
-        let n_minus_1 = n_fp.checked_sub(one)?;
+        let n_minus_1 = n_fp.checked_sub(FixedPoint::one())?;
         let k_sqrt_n = k.checked_mul(sqrt_n)?;
 
-        // x_depeg = min(r, (k·√n + D) / n)
-        // Clamped to r: reserves cannot exceed sphere radius.
-        // When x_depeg == r, depeg_price == 0 (complete depeg).
-        let x_depeg = k_sqrt_n.checked_add(d)?.checked_div(n_fp)?.min(r);
-
+        // x_depeg == x_max (already clamped to r)
         // x_other = (k·√n - x_depeg) / (n - 1)
-        let x_other = k_sqrt_n.checked_sub(x_depeg)?.checked_div(n_minus_1)?;
+        let x_other = k_sqrt_n.checked_sub(x_max)?.checked_div(n_minus_1)?;
 
         // p_depeg = (r - x_depeg) / (r - x_other)
-        let numerator = r.checked_sub(x_depeg)?;
+        let numerator = r.checked_sub(x_max)?;
         let denominator = r.checked_sub(x_other)?;
 
         numerator.checked_div(denominator)
@@ -257,10 +258,7 @@ impl Tick {
         let offset = k.checked_sub(r.checked_mul(sqrt_n)?)?;
         let offset_sq = offset.squared()?;
         let radicand = r_sq.checked_sub(offset_sq)?;
-
-        // Clamp for fixed-point edge cases
-        let radicand_safe = radicand.max(FixedPoint::zero());
-        radicand_safe.sqrt()
+        Self::clamped_sqrt(radicand)
     }
 }
 
