@@ -143,13 +143,25 @@ impl Tick {
         Ok(())
     }
 
-    /// Defensive sqrt: clamp radicand to zero before sqrt.
+    /// Tolerance-bounded sqrt: clamp tiny negative radicands to zero,
+    /// reject materially negative ones.
     ///
     /// Fixed-point rounding near tick boundaries can produce tiny negative
-    /// radicands that are theoretically non-negative. This clamps to zero
-    /// instead of propagating a spurious MathOverflow.
+    /// radicands that are theoretically non-negative. Values within
+    /// [-SQRT_TOLERANCE, 0) are clamped to zero; values below
+    /// -SQRT_TOLERANCE indicate an invalid geometry and return an error.
+    const SQRT_TOLERANCE: i64 = 1; // 1.0 in integer units — generous for Q64.64 rounding
+
     fn clamped_sqrt(radicand: FixedPoint) -> Result<FixedPoint> {
-        radicand.max(FixedPoint::zero()).sqrt()
+        if radicand.raw < 0 {
+            let neg_tolerance = FixedPoint::from_int(-Self::SQRT_TOLERANCE);
+            require!(
+                radicand.raw >= neg_tolerance.raw,
+                crate::errors::OrbitalError::InvalidTickBound
+            );
+            return FixedPoint::zero().sqrt();
+        }
+        radicand.sqrt()
     }
 
     /// Shared discriminant: D = √(k²·n - n·((n-1)·r - k·√n)²)
@@ -603,6 +615,54 @@ mod tests {
         let sphere = make_sphere(200, 3);
         let k_max = Tick::k_max(&sphere).unwrap();
         assert!(Tick::compute_x_max(k_max, &sphere).is_err());
+    }
+
+    // ══════════════════════════════════════════════
+    // clamped_sqrt tolerance tests
+    // ══════════════════════════════════════════════
+
+    #[test]
+    fn test_clamped_sqrt_positive_value() {
+        let val = FixedPoint::from_int(4);
+        let result = Tick::clamped_sqrt(val).unwrap();
+        let expected = FixedPoint::from_int(2);
+        assert!(result.approx_eq(expected, FixedPoint::from_raw(1 << 32)));
+    }
+
+    #[test]
+    fn test_clamped_sqrt_zero() {
+        let result = Tick::clamped_sqrt(FixedPoint::zero()).unwrap();
+        assert_eq!(result.raw, 0);
+    }
+
+    #[test]
+    fn test_clamped_sqrt_tiny_negative_clamps_to_zero() {
+        // -0.5 is within tolerance (-1.0), should clamp to 0
+        let tiny_neg = FixedPoint::from_raw(-(1i128 << 63)); // -0.5
+        let result = Tick::clamped_sqrt(tiny_neg).unwrap();
+        assert_eq!(result.raw, 0);
+    }
+
+    #[test]
+    fn test_clamped_sqrt_rejects_large_negative() {
+        // -2.0 exceeds tolerance (-1.0), should error
+        let large_neg = FixedPoint::from_int(-2);
+        assert!(Tick::clamped_sqrt(large_neg).is_err());
+    }
+
+    #[test]
+    fn test_clamped_sqrt_boundary_at_neg_tolerance() {
+        // Exactly -1.0 (boundary of tolerance), should clamp to 0
+        let at_boundary = FixedPoint::from_int(-1);
+        let result = Tick::clamped_sqrt(at_boundary).unwrap();
+        assert_eq!(result.raw, 0);
+    }
+
+    #[test]
+    fn test_clamped_sqrt_just_beyond_tolerance() {
+        // Just below -1.0, should error
+        let just_beyond = FixedPoint::from_raw(FixedPoint::from_int(-1).raw - 1);
+        assert!(Tick::clamped_sqrt(just_beyond).is_err());
     }
 
     // ══════════════════════════════════════════════
