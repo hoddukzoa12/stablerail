@@ -95,15 +95,21 @@ impl ReserveState {
     /// ||r⃗ - x⃗||² = Σ(r - xᵢ)² = n·r² - 2r·Σxᵢ + Σxᵢ²
     ///
     /// Algebraically equivalent to `Sphere::distance_squared()` but O(1) instead of O(n).
+    /// Requires `self.n == sphere.n` to produce meaningful results.
     pub fn distance_squared_from_center(&self, sphere: &Sphere) -> Result<FixedPoint> {
+        require!(
+            self.n == sphere.n,
+            crate::errors::OrbitalError::InvalidAssetCount
+        );
+
         let n_fp = FixedPoint::from_int(self.n as i64);
         let r_sq = sphere.radius_squared()?;
 
         // n * r²
         let term1 = n_fp.checked_mul(r_sq)?;
-        // 2 * r * Σxᵢ
-        let two = FixedPoint::from_int(2);
-        let term2 = two.checked_mul(sphere.radius)?.checked_mul(self.running_sum)?;
+        // 2r·Σxᵢ — computed as r·Σxᵢ + r·Σxᵢ to reduce intermediate magnitude
+        let r_times_sum = sphere.radius.checked_mul(self.running_sum)?;
+        let term2 = r_times_sum.checked_add(r_times_sum)?;
         // n·r² - 2r·Σxᵢ + Σxᵢ²
         term1.checked_sub(term2)?.checked_add(self.running_sq_sum)
     }
@@ -113,8 +119,12 @@ impl ReserveState {
     /// price(i, j) = dx_i/dx_j = (r - x_j) / (r - x_i)
     ///
     /// At equal reserves, price = 1.0 for all pairs.
-    /// When x_i < x_j (token i is scarcer), price > 1.0.
+    /// When x_i < x_j (token i is scarcer), price < 1.0 (less output per unit input).
     pub fn price(&self, i: usize, j: usize, sphere: &Sphere) -> Result<FixedPoint> {
+        require!(
+            self.n == sphere.n,
+            crate::errors::OrbitalError::InvalidAssetCount
+        );
         require!(
             i != j,
             crate::errors::OrbitalError::SameTokenSwap
@@ -137,6 +147,9 @@ impl ReserveState {
     ///
     /// Updates amounts, running_sum, and running_sq_sum without re-looping.
     /// Called during tick-segment trade execution for constant-time updates.
+    ///
+    /// All new values are computed into temporaries first and assigned atomically
+    /// to prevent partial-update corruption if intermediate arithmetic fails.
     pub fn apply_trade(
         &mut self,
         token_in: usize,
@@ -159,20 +172,22 @@ impl ReserveState {
         let new_in = old_in.checked_add(amount_in)?;
         let new_out = old_out.checked_sub(amount_out)?;
 
-        // Update running_sum: Σ_new = Σ_old + amount_in - amount_out
-        self.running_sum = self.running_sum
+        // Compute all new values into temporaries before any mutation
+        let new_running_sum = self.running_sum
             .checked_add(amount_in)?
             .checked_sub(amount_out)?;
 
-        // Update running_sq_sum: Σ²_new = Σ²_old + new_in² - old_in² + new_out² - old_out²
-        self.running_sq_sum = self.running_sq_sum
+        let new_running_sq_sum = self.running_sq_sum
             .checked_add(new_in.squared()?)?
             .checked_sub(old_in.squared()?)?
             .checked_add(new_out.squared()?)?
             .checked_sub(old_out.squared()?)?;
 
+        // Atomic assignment: all-or-nothing update
         self.amounts[token_in] = new_in;
         self.amounts[token_out] = new_out;
+        self.running_sum = new_running_sum;
+        self.running_sq_sum = new_running_sq_sum;
 
         Ok(())
     }
