@@ -1,5 +1,7 @@
 pub mod fixed_point;
+pub mod reserve_state;
 pub mod sphere;
 
 pub use fixed_point::FixedPoint;
+pub use reserve_state::ReserveState;
 pub use sphere::Sphere;

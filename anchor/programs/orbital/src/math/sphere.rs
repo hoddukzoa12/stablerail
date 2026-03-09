@@ -74,4 +74,106 @@ impl Sphere {
         let rhs = self.radius_squared()?;
         Ok(lhs.approx_eq(rhs, epsilon))
     }
+
+    /// Marginal price of token i in terms of token j.
+    ///
+    /// price(i, j) = dx_i/dx_j = (r - x_j) / (r - x_i)
+    ///
+    /// Convenience method that operates on a reserve slice directly.
+    /// For repeated price queries, prefer `ReserveState::price()`.
+    pub fn price(&self, i: usize, j: usize, reserves: &[FixedPoint]) -> Result<FixedPoint> {
+        require!(
+            i != j,
+            crate::errors::OrbitalError::SameTokenSwap
+        );
+        require!(
+            i < self.n as usize && j < self.n as usize,
+            crate::errors::OrbitalError::InvalidTokenIndex
+        );
+        require!(
+            reserves.len() >= self.n as usize,
+            crate::errors::OrbitalError::InvalidAssetCount
+        );
+
+        let numerator = self.radius.checked_sub(reserves[j])?;
+        let denominator = self.radius.checked_sub(reserves[i])?;
+
+        numerator.checked_div(denominator)
+            .map_err(|_| error!(crate::errors::OrbitalError::DivisionByZero))
+    }
+
+    /// Check sphere invariant with default 0.1% tolerance.
+    ///
+    /// tolerance = r² / 1000
+    ///
+    /// Returns `Ok(())` if satisfied, `InvariantViolation` error otherwise.
+    /// Uses O(n) loop; for O(1) path, use `check_invariant_with_distance_sq`.
+    pub fn check_invariant(&self, reserves: &[FixedPoint]) -> Result<()> {
+        let r_sq = self.radius_squared()?;
+        let tolerance = FixedPoint::from_raw(r_sq.raw / 1000);
+
+        let valid = self.verify_invariant(reserves, tolerance)?;
+        require!(valid, crate::errors::OrbitalError::InvariantViolation);
+        Ok(())
+    }
+
+    /// Check sphere invariant using pre-computed distance squared (O(1) path).
+    ///
+    /// Accepts the result of `ReserveState::distance_squared_from_center()`.
+    /// Avoids O(n) re-computation during swap execution.
+    pub fn check_invariant_with_distance_sq(&self, distance_sq: FixedPoint) -> Result<()> {
+        let r_sq = self.radius_squared()?;
+        let tolerance = FixedPoint::from_raw(r_sq.raw / 1000);
+
+        require!(
+            distance_sq.approx_eq(r_sq, tolerance),
+            crate::errors::OrbitalError::InvariantViolation
+        );
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sphere_price_equal_reserves() {
+        // At equal price point, price(i, j) = 1.0 for all i, j
+        let sphere = Sphere::new(FixedPoint::from_int(600), 3).unwrap(); // r = 200
+        let q = sphere.equal_price_point().unwrap();
+        let reserves = [q, q, q];
+
+        let price = sphere.price(0, 1, &reserves).unwrap();
+        let eps = FixedPoint::from_raw(1i128 << 40);
+        assert!(
+            price.approx_eq(FixedPoint::one(), eps),
+            "price at equal reserves should be 1.0, got {:?}",
+            price
+        );
+    }
+
+    #[test]
+    fn test_sphere_check_invariant_pass() {
+        let sphere = Sphere::new(FixedPoint::from_int(600), 3).unwrap(); // r = 200
+        let q = sphere.equal_price_point().unwrap();
+        let reserves = [q, q, q];
+
+        // Should not return an error
+        sphere.check_invariant(&reserves).unwrap();
+    }
+
+    #[test]
+    fn test_sphere_check_invariant_fail() {
+        let sphere = Sphere::new(FixedPoint::from_int(600), 3).unwrap(); // r = 200
+        // Reserves far from the sphere surface
+        let reserves = [
+            FixedPoint::from_int(10),
+            FixedPoint::from_int(10),
+            FixedPoint::from_int(10),
+        ];
+
+        // Should return InvariantViolation
+        assert!(sphere.check_invariant(&reserves).is_err());
+    }
 }
