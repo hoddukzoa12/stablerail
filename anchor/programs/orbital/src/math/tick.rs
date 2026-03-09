@@ -108,8 +108,10 @@ impl Tick {
 
     /// Compute x_min for a given (k, sphere) without constructing a full Tick.
     ///
+    /// Validates k_min < k < k_max before computing.
     /// x_min = (k·√n - D) / n
     pub fn compute_x_min(k: FixedPoint, sphere: &Sphere) -> Result<FixedPoint> {
+        Self::validate_k(k, sphere)?;
         let n_fp = FixedPoint::from_int(sphere.n as i64);
         let sqrt_n = n_fp.sqrt()?;
         let d = Self::compute_discriminant(k, sphere.radius, n_fp, sqrt_n)?;
@@ -118,8 +120,10 @@ impl Tick {
 
     /// Compute x_max for a given (k, sphere) without constructing a full Tick.
     ///
+    /// Validates k_min < k < k_max before computing.
     /// x_max = min(r, (k·√n + D) / n)
     pub fn compute_x_max(k: FixedPoint, sphere: &Sphere) -> Result<FixedPoint> {
+        Self::validate_k(k, sphere)?;
         let n_fp = FixedPoint::from_int(sphere.n as i64);
         let sqrt_n = n_fp.sqrt()?;
         let d = Self::compute_discriminant(k, sphere.radius, n_fp, sqrt_n)?;
@@ -127,6 +131,17 @@ impl Tick {
     }
 
     // ── Private Computation Methods ──
+
+    /// Validate k is within strict bounds: k_min < k < k_max.
+    fn validate_k(k: FixedPoint, sphere: &Sphere) -> Result<()> {
+        let k_min_val = Self::k_min(sphere)?;
+        let k_max_val = Self::k_max(sphere)?;
+        require!(
+            k.raw > k_min_val.raw && k.raw < k_max_val.raw,
+            crate::errors::OrbitalError::InvalidTickBound
+        );
+        Ok(())
+    }
 
     /// Defensive sqrt: clamp radicand to zero before sqrt.
     ///
@@ -574,6 +589,20 @@ mod tests {
         let tick = Tick::new(k, &sphere).unwrap();
         let standalone = Tick::compute_x_max(k, &sphere).unwrap();
         assert_eq!(tick.x_max.raw, standalone.raw);
+    }
+
+    #[test]
+    fn test_compute_x_min_rejects_invalid_k() {
+        let sphere = make_sphere(200, 3);
+        let k_min = Tick::k_min(&sphere).unwrap();
+        assert!(Tick::compute_x_min(k_min, &sphere).is_err());
+    }
+
+    #[test]
+    fn test_compute_x_max_rejects_invalid_k() {
+        let sphere = make_sphere(200, 3);
+        let k_max = Tick::k_max(&sphere).unwrap();
+        assert!(Tick::compute_x_max(k_max, &sphere).is_err());
     }
 
     // ══════════════════════════════════════════════
