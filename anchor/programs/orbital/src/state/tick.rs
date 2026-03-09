@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use crate::math::FixedPoint;
 
-#[derive(Clone, Copy, PartialEq, Eq, AnchorSerialize, AnchorDeserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, AnchorSerialize, AnchorDeserialize)]
 pub enum TickStatus {
     Interior,
     Boundary,
