@@ -176,6 +176,12 @@ impl ReserveState {
         let new_in = old_in.checked_add(amount_in)?;
         let new_out = old_out.checked_sub(amount_out)?;
 
+        // Guard: reserves cannot go negative (physically impossible)
+        require!(
+            new_out.raw >= 0,
+            crate::errors::OrbitalError::InsufficientLiquidity
+        );
+
         // Compute all new values into temporaries before any mutation
         let new_running_sum = self.running_sum
             .checked_add(amount_in)?
@@ -500,5 +506,30 @@ mod tests {
         let pos = FixedPoint::from_int(10);
         let neg = FixedPoint::from_int(-10);
         assert!(rs.apply_trade(0, pos, 1, neg).is_err());
+    }
+
+    // ── Reserve Drain Guard ──
+
+    #[test]
+    fn test_apply_trade_rejects_reserve_drain() {
+        // reserves = [100, 200, 300], try to withdraw 250 from token 1 (reserve = 200)
+        let amounts = make_amounts(&[100, 200, 300]);
+        let mut rs = ReserveState::new(&amounts, 3).unwrap();
+
+        let amount_in = FixedPoint::from_int(50);
+        let amount_out = FixedPoint::from_int(250); // > 200, should fail
+        assert!(rs.apply_trade(0, amount_in, 1, amount_out).is_err());
+    }
+
+    #[test]
+    fn test_apply_trade_allows_exact_drain() {
+        // Withdrawing exactly the full reserve should succeed (new_out = 0)
+        let amounts = make_amounts(&[100, 200, 300]);
+        let mut rs = ReserveState::new(&amounts, 3).unwrap();
+
+        let amount_in = FixedPoint::from_int(50);
+        let amount_out = FixedPoint::from_int(200); // == reserve, new_out = 0
+        assert!(rs.apply_trade(0, amount_in, 1, amount_out).is_ok());
+        assert_eq!(rs.amounts[1].raw, 0);
     }
 }
