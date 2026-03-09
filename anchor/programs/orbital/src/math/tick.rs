@@ -220,7 +220,6 @@ impl Tick {
         let denominator = r.checked_sub(x_other)?;
 
         numerator.checked_div(denominator)
-            .map_err(|_| error!(crate::errors::OrbitalError::DivisionByZero))
     }
 
     /// Capital efficiency: x_base / (x_base - x_min)
