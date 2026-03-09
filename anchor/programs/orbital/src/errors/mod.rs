@@ -62,6 +62,9 @@ pub enum OrbitalError {
     #[msg("Invalid liquidity amount")]
     InvalidLiquidityAmount,
 
+    #[msg("Trade amount must be non-negative")]
+    NegativeTradeAmount,
+
     #[msg("Position not found")]
     PositionNotFound,
 

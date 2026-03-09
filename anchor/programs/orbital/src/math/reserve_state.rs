@@ -165,6 +165,10 @@ impl ReserveState {
             token_in != token_out,
             crate::errors::OrbitalError::SameTokenSwap
         );
+        require!(
+            amount_in.raw >= 0 && amount_out.raw >= 0,
+            crate::errors::OrbitalError::NegativeTradeAmount
+        );
 
         let old_in = self.amounts[token_in];
         let old_out = self.amounts[token_out];
@@ -474,5 +478,27 @@ mod tests {
             d_sq,
             r_sq
         );
+    }
+
+    // ── Negative Trade Amount Guard ──
+
+    #[test]
+    fn test_apply_trade_rejects_negative_amount_in() {
+        let amounts = make_amounts(&[100, 200, 300]);
+        let mut rs = ReserveState::new(&amounts, 3).unwrap();
+
+        let neg = FixedPoint::from_int(-10);
+        let pos = FixedPoint::from_int(10);
+        assert!(rs.apply_trade(0, neg, 1, pos).is_err());
+    }
+
+    #[test]
+    fn test_apply_trade_rejects_negative_amount_out() {
+        let amounts = make_amounts(&[100, 200, 300]);
+        let mut rs = ReserveState::new(&amounts, 3).unwrap();
+
+        let pos = FixedPoint::from_int(10);
+        let neg = FixedPoint::from_int(-10);
+        assert!(rs.apply_trade(0, pos, 1, neg).is_err());
     }
 }
