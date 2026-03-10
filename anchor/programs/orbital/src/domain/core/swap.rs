@@ -139,7 +139,8 @@ pub fn execute_swap(
     let mid_price = if mid_price_den.is_zero() || mid_price_num.is_zero() {
         None
     } else {
-        Some(mid_price_num.checked_div(mid_price_den)?)
+        let mp = mid_price_num.checked_div(mid_price_den)?;
+        if mp.is_zero() { None } else { Some(mp) }
     };
 
     // 5. Apply trade to reserves
@@ -507,5 +508,52 @@ mod tests {
 
         let result = execute_swap(&mut pool, 0, 1, amount_in, amount_out, negative_min);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_swap_quantized_zero_mid_price_no_division_by_zero() {
+        // When reserve_out is 1 ulp below radius, mid_price_num is tiny.
+        // Division mid_price_num / mid_price_den can truncate to 0 in Q64.64.
+        // The swap must treat this as degenerate (slippage = 0), not DivisionByZero.
+        let mut pool = init_pool(3, 1_000);
+        pool.fee_rate_bps = 0;
+
+        let r = pool.sphere.radius;
+        let q = pool.reserves[2]; // equal-price reserve
+
+        // Set reserve_out = r - 1 ulp (nearly at radius)
+        let one_ulp = FixedPoint::from_raw(1);
+        pool.reserves[1] = r.checked_sub(one_ulp).unwrap();
+
+        // Solve for reserve_in to preserve sphere invariant:
+        //   (r - x0)^2 = r^2 - (r - x1)^2 - (r - x2)^2
+        let r_sq = r.squared().unwrap();
+        let d1 = one_ulp.squared().unwrap();          // (r - x1)^2 = 1 ulp^2
+        let c = r.checked_sub(q).unwrap();
+        let c_sq = c.squared().unwrap();               // (r - x2)^2
+        let rem = r_sq.checked_sub(d1).unwrap().checked_sub(c_sq).unwrap();
+        if rem.raw < 0 {
+            return; // geometry not viable at this scale
+        }
+        pool.reserves[0] = r.checked_sub(rem.sqrt().unwrap()).unwrap();
+        update_caches(&mut pool).unwrap();
+
+        let amount_in = FixedPoint::from_int(1);
+        let amount_out = FixedPoint::from_raw(1); // tiny amount
+        let result = execute_swap(
+            &mut pool, 0, 1, amount_in, amount_out, FixedPoint::from_int(0),
+        );
+
+        match result {
+            Ok(sr) => assert_eq!(sr.slippage_bps, 0),
+            Err(e) => {
+                let err_str = format!("{:?}", e);
+                assert!(
+                    !err_str.contains("DivisionByZero"),
+                    "Quantized-zero mid price must not cause DivisionByZero, got: {}",
+                    err_str
+                );
+            }
+        }
     }
 }
