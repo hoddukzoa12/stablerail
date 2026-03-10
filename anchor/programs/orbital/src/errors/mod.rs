@@ -103,4 +103,7 @@ pub enum OrbitalError {
     // ── Pool Validation (appended for code stability) ──
     #[msg("Duplicate token mint in pool")]
     DuplicateTokenMint,
+
+    #[msg("Reserve exceeds sphere radius — swap would cross branch boundary")]
+    ReserveExceedsRadius,
 }

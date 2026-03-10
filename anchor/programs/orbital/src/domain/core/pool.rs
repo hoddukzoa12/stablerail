@@ -166,41 +166,11 @@ pub fn initialize_pool_reserves(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::core::test_helpers::{make_pool, unique_pubkeys};
 
     /// Generous epsilon for sqrt-derived comparisons (~2^-22)
     fn sqrt_epsilon() -> FixedPoint {
         FixedPoint::from_raw(1i128 << 42)
-    }
-
-    fn unique_pubkeys(n: usize) -> Vec<Pubkey> {
-        (0..n).map(|_| Pubkey::new_unique()).collect()
-    }
-
-    fn make_pool(n: u8) -> PoolState {
-        PoolState {
-            bump: 0,
-            authority: Pubkey::new_unique(),
-            sphere: Sphere {
-                radius: FixedPoint::zero(),
-                n,
-            },
-            reserves: [FixedPoint::zero(); MAX_ASSETS],
-            n_assets: n,
-            token_mints: [Pubkey::default(); MAX_ASSETS],
-            token_vaults: [Pubkey::default(); MAX_ASSETS],
-            fee_rate_bps: 30,
-            total_interior_liquidity: FixedPoint::zero(),
-            total_boundary_liquidity: FixedPoint::zero(),
-            alpha_cache: FixedPoint::zero(),
-            w_norm_sq_cache: FixedPoint::zero(),
-            tick_count: 0,
-            is_active: true,
-            total_volume: FixedPoint::zero(),
-            total_fees: FixedPoint::zero(),
-            created_at: 0,
-            position_count: 0,
-            _reserved: [0u8; 120],
-        }
     }
 
     /// Initialize a pool with equal deposits and return it.
