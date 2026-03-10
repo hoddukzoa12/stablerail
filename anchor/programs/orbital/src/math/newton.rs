@@ -50,6 +50,10 @@ pub fn compute_amount_out_analytical(
 ) -> Result<FixedPoint> {
     let n = sphere.n as usize;
     require!(
+        reserves.len() >= n,
+        crate::errors::OrbitalError::InvalidAssetCount
+    );
+    require!(
         token_in < n && token_out < n,
         crate::errors::OrbitalError::InvalidTokenIndex
     );
@@ -60,6 +64,10 @@ pub fn compute_amount_out_analytical(
     require!(
         net_amount_in.raw > 0,
         crate::errors::OrbitalError::NegativeTradeAmount
+    );
+    require!(
+        reserves[token_out].raw > 0,
+        crate::errors::OrbitalError::InsufficientLiquidity
     );
 
     let r = sphere.radius;
@@ -147,6 +155,10 @@ impl NewtonSolver {
     ) -> Result<FixedPoint> {
         let n = sphere.n as usize;
         require!(
+            reserves.len() >= n,
+            crate::errors::OrbitalError::InvalidAssetCount
+        );
+        require!(
             token_in < n && token_out < n,
             crate::errors::OrbitalError::InvalidTokenIndex
         );
@@ -157,6 +169,10 @@ impl NewtonSolver {
         require!(
             net_amount_in.raw > 0,
             crate::errors::OrbitalError::NegativeTradeAmount
+        );
+        require!(
+            reserves[token_out].raw > 0,
+            crate::errors::OrbitalError::InsufficientLiquidity
         );
 
         let r = sphere.radius;
@@ -198,7 +214,14 @@ impl NewtonSolver {
             x = x_new;
 
             if delta.raw < self.epsilon.raw {
-                return Ok(x);
+                // Verify residual is also small — a clamped step may shrink delta
+                // to near-zero while the residual is still large (boundary sticking).
+                let fx_check = invariant_residual(a, b, d, x)?;
+                if fx_check.abs()?.raw < self.epsilon.raw {
+                    return Ok(x);
+                }
+                // Delta converged but residual large → stuck at boundary
+                break;
             }
         }
 
@@ -728,5 +751,77 @@ mod tests {
         assert!(fprime.is_positive());
         // 2 * (100 + 10) = 220
         assert!(fprime.approx_eq(FixedPoint::from_int(220), eps()));
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // Guard & edge-case tests
+    // ══════════════════════════════════════════════════════════
+
+    #[test]
+    fn test_analytical_zero_reserve_out_error() {
+        // reserves[token_out] == 0 → InsufficientLiquidity
+        let (sphere, mut reserves) = make_equal_reserves(3_000, 3);
+        reserves[1] = FixedPoint::zero();
+        let d_in = FixedPoint::from_int(10);
+
+        assert!(compute_amount_out_analytical(
+            &sphere, &reserves, 0, 1, d_in,
+        ).is_err());
+    }
+
+    #[test]
+    fn test_newton_zero_reserve_out_error() {
+        // reserves[token_out] == 0 → InsufficientLiquidity (not SolverDidNotConverge)
+        let (sphere, mut reserves) = make_equal_reserves(3_000, 3);
+        reserves[1] = FixedPoint::zero();
+        let d_in = FixedPoint::from_int(10);
+        let solver = NewtonSolver::default_solver();
+
+        assert!(solver.solve(&sphere, &reserves, 0, 1, d_in).is_err());
+    }
+
+    #[test]
+    fn test_analytical_short_reserves_slice_error() {
+        // reserves.len() < n → InvalidAssetCount
+        let sphere = Sphere::new(FixedPoint::from_int(3_000), 3).unwrap();
+        let reserves = [FixedPoint::from_int(100), FixedPoint::from_int(100)]; // len=2, n=3
+        let d_in = FixedPoint::from_int(10);
+
+        assert!(compute_amount_out_analytical(
+            &sphere, &reserves, 0, 1, d_in,
+        ).is_err());
+    }
+
+    #[test]
+    fn test_newton_short_reserves_slice_error() {
+        // reserves.len() < n → InvalidAssetCount
+        let sphere = Sphere::new(FixedPoint::from_int(3_000), 3).unwrap();
+        let reserves = [FixedPoint::from_int(100), FixedPoint::from_int(100)]; // len=2, n=3
+        let d_in = FixedPoint::from_int(10);
+        let solver = NewtonSolver::default_solver();
+
+        assert!(solver.solve(&sphere, &reserves, 0, 1, d_in).is_err());
+    }
+
+    #[test]
+    fn test_newton_clamp_does_not_false_converge() {
+        // Oversized trade that pushes Newton toward boundary — should fall through
+        // to bisection and either converge correctly or error, never return a
+        // wrong answer silently.
+        let (sphere, reserves) = make_equal_reserves(3_000, 3);
+        // Large trade close to reserve limit
+        let x_out = reserves[1];
+        let d_in = x_out.checked_mul(FixedPoint::from_fraction(9, 10).unwrap()).unwrap();
+        let solver = NewtonSolver::default_solver();
+
+        let result = solver.solve(&sphere, &reserves, 0, 1, d_in);
+        if let Ok(d_out) = result {
+            // If it returns a value, it must satisfy the invariant
+            assert!(
+                verify_invariant_after_swap(&sphere, &reserves, 0, 1, d_in, d_out),
+                "Newton returned d_out that violates invariant"
+            );
+        }
+        // If Err, that's acceptable — trade may exceed liquidity
     }
 }
