@@ -283,11 +283,17 @@ fn bisection_solve(
     max_iterations: u32,
     epsilon: FixedPoint,
 ) -> Result<FixedPoint> {
-    // Verify bracket: f(lo) and f(hi) should have opposite signs
+    // Check endpoints for exact (or near-exact) roots before bracket validation
     let f_lo = invariant_residual(a, b, d, lo)?;
+    if f_lo.abs()?.raw < epsilon.raw {
+        return Ok(lo);
+    }
     let f_hi = invariant_residual(a, b, d, hi)?;
+    if f_hi.abs()?.raw < epsilon.raw {
+        return Ok(hi);
+    }
 
-    // If both same sign, the root may not be in [lo, hi]
+    // Verify bracket: f(lo) and f(hi) should have opposite signs
     if (f_lo.raw > 0) == (f_hi.raw > 0) {
         return Err(error!(crate::errors::OrbitalError::SolverDidNotConverge));
     }
