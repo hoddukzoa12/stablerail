@@ -52,7 +52,7 @@ pub fn handler<'info>(
 
     // ── Input validation ──
     require!(
-        params.n_assets >= 2 && n <= MAX_ASSETS,
+        n >= 2 && n <= MAX_ASSETS,
         OrbitalError::InvalidAssetCount
     );
     require!(params.fee_rate_bps <= 10000, OrbitalError::InvalidFeeRate);
@@ -97,9 +97,21 @@ pub fn handler<'info>(
     let vault_space = TokenAccount::LEN;
     let vault_lamports = rent.minimum_balance(vault_space);
 
+    // remaining_accounts offsets (matches doc comment layout)
+    let mint_offset = 0;     // [0..n)
+    let vault_offset = n;    // [n..2n)
+    let ata_offset = 2 * n;  // [2n..3n)
+
+    // Pool PDA seeds — loop-invariant, hoisted for clarity
+    let pool_seeds: &[&[u8]] = &[
+        b"pool",
+        ctx.accounts.authority.key.as_ref(),
+        &[pool.bump],
+    ];
+
     for i in 0..n {
-        let mint_info = &remaining[i];
-        let vault_info = &remaining[n + i];
+        let mint_info = &remaining[mint_offset + i];
+        let vault_info = &remaining[vault_offset + i];
 
         // Verify mint matches params
         require!(
@@ -111,7 +123,7 @@ pub fn handler<'info>(
             derive_vault_pda(&pool_key, mint_info.key, ctx.program_id);
         require!(
             *vault_info.key == expected_vault,
-            OrbitalError::InvalidTokenIndex
+            OrbitalError::InvalidVaultAddress
         );
 
         vault_pubkeys[i] = expected_vault;
@@ -139,11 +151,6 @@ pub fn handler<'info>(
         )?;
 
         // CPI: initialize token account (vault owned by pool PDA)
-        let pool_seeds: &[&[u8]] = &[
-            b"pool",
-            ctx.accounts.authority.key.as_ref(),
-            &[pool.bump],
-        ];
         token::initialize_account3(CpiContext::new_with_signer(
             ctx.accounts.token_program.to_account_info(),
             token::InitializeAccount3 {
@@ -160,8 +167,8 @@ pub fn handler<'info>(
 
     // ── Transfer initial deposits from authority ATAs to vaults ──
     for i in 0..n {
-        let ata_info = &remaining[2 * n + i];
-        let vault_info = &remaining[n + i];
+        let ata_info = &remaining[ata_offset + i];
+        let vault_info = &remaining[vault_offset + i];
 
         token::transfer(
             CpiContext::new(

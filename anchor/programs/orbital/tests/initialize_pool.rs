@@ -29,6 +29,9 @@ const TOKEN_PROGRAM_ID: Pubkey = solana_sdk::pubkey!("TokenkegQfeZyiNwAJbNbGKPFX
 /// MAX_ASSETS from the program
 const MAX_ASSETS: usize = 8;
 
+/// Associated Token Account program ID
+const ATA_PROGRAM_ID: Pubkey = solana_sdk::pubkey!("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
+
 /// Find the compiled .so file
 fn program_so_path() -> PathBuf {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -83,7 +86,7 @@ fn create_ata_and_mint(
 
     // Create ATA: use manual instruction since we don't have spl crate
     let create_ata_ix = Instruction {
-        program_id: solana_sdk::pubkey!("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"),
+        program_id: ATA_PROGRAM_ID,
         accounts: vec![
             AccountMeta::new(payer.pubkey(), true),
             AccountMeta::new(ata, false),
@@ -128,7 +131,7 @@ fn spl_associated_token_account_id(wallet: &Pubkey, mint: &Pubkey) -> Pubkey {
         TOKEN_PROGRAM_ID.as_ref(),
         mint.as_ref(),
     ];
-    let program = solana_sdk::pubkey!("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
+    let program = ATA_PROGRAM_ID;
     Pubkey::find_program_address(seeds, &program).0
 }
 
@@ -271,7 +274,7 @@ fn test_initialize_pool_creates_vaults_and_transfers() {
 
     // ── Verify pool state ──
     let pool_account = svm.get_account(&pool_pda).expect("pool account should exist");
-    assert!(pool_account.data.len() > 0, "pool should have data");
+    assert!(!pool_account.data.is_empty(), "pool should have data");
 
     // ── Verify vault accounts ──
     for (i, vault_pda) in vault_pdas.iter().enumerate() {

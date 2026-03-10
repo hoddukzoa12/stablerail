@@ -28,10 +28,27 @@ pub struct PoolState {
 }
 
 impl PoolState {
-    // vault_bumps[8] = +8, _reserved reduced 120→112 = net zero change
-    pub const SIZE: usize = 8 + 1 + 32 + 17 + (16 * MAX_ASSETS) + 1
-        + (32 * MAX_ASSETS) + (32 * MAX_ASSETS) + MAX_ASSETS + 2 + 16 + 16 + 16 + 16
-        + 2 + 1 + 16 + 16 + 8 + 8 + 112;
+    pub const SIZE: usize = 8               // anchor discriminator
+        + 1                                  // bump
+        + 32                                 // authority
+        + 17                                 // sphere (FixedPoint=16 + u8=1)
+        + (16 * MAX_ASSETS)                  // reserves
+        + 1                                  // n_assets
+        + (32 * MAX_ASSETS)                  // token_mints
+        + (32 * MAX_ASSETS)                  // token_vaults
+        + MAX_ASSETS                         // vault_bumps
+        + 2                                  // fee_rate_bps
+        + 16                                 // total_interior_liquidity
+        + 16                                 // total_boundary_liquidity
+        + 16                                 // alpha_cache
+        + 16                                 // w_norm_sq_cache
+        + 2                                  // tick_count
+        + 1                                  // is_active
+        + 16                                 // total_volume
+        + 16                                 // total_fees
+        + 8                                  // created_at
+        + 8                                  // position_count
+        + 112;                               // _reserved
 
     pub fn active_reserves(&self) -> &[FixedPoint] {
         &self.reserves[..self.n_assets as usize]
