@@ -34,12 +34,15 @@ pub mod orbital {
     //  Liquidity Context — LP Position Management
     // ═══════════════════════════════════════════
 
-    pub fn add_liquidity(ctx: Context<AddLiquidity>, params: AddLiquidityParams) -> Result<()> {
+    pub fn add_liquidity<'info>(
+        ctx: Context<'_, '_, 'info, 'info, AddLiquidity<'info>>,
+        params: AddLiquidityParams,
+    ) -> Result<()> {
         instructions::add_liquidity::handler(ctx, params)
     }
 
-    pub fn remove_liquidity(
-        ctx: Context<RemoveLiquidity>,
+    pub fn remove_liquidity<'info>(
+        ctx: Context<'_, '_, 'info, 'info, RemoveLiquidity<'info>>,
         params: RemoveLiquidityParams,
     ) -> Result<()> {
         instructions::remove_liquidity::handler(ctx, params)

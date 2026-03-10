@@ -66,3 +66,47 @@ pub struct TickCrossed {
     /// Unix timestamp
     pub timestamp: i64,
 }
+
+/// Emitted when liquidity is added to a pool via `add_liquidity`.
+#[event]
+pub struct LiquidityAdded {
+    /// Pool account pubkey
+    pub pool: Pubkey,
+    /// LP provider pubkey
+    pub provider: Pubkey,
+    /// Position account pubkey
+    pub position: Pubkey,
+    /// Per-token deposit amounts in base units (only first n_assets valid)
+    pub amounts: [u64; MAX_ASSETS],
+    /// Liquidity units assigned to position (Q64.64 raw)
+    pub liquidity: i128,
+    /// New sphere radius after deposit (Q64.64 raw)
+    pub new_radius: i128,
+    /// Number of active assets in the pool
+    pub n_assets: u8,
+    /// Unix timestamp
+    pub timestamp: i64,
+}
+
+/// Emitted when liquidity is removed from a pool via `remove_liquidity`.
+#[event]
+pub struct LiquidityRemoved {
+    /// Pool account pubkey
+    pub pool: Pubkey,
+    /// LP provider pubkey
+    pub provider: Pubkey,
+    /// Position account pubkey
+    pub position: Pubkey,
+    /// Per-token returned amounts in base units (only first n_assets valid)
+    pub amounts: [u64; MAX_ASSETS],
+    /// Liquidity units removed (Q64.64 raw)
+    pub liquidity_removed: i128,
+    /// Remaining liquidity in the position (Q64.64 raw)
+    pub remaining_liquidity: i128,
+    /// New sphere radius after withdrawal (Q64.64 raw)
+    pub new_radius: i128,
+    /// Number of active assets in the pool
+    pub n_assets: u8,
+    /// Unix timestamp
+    pub timestamp: i64,
+}

@@ -3,8 +3,8 @@ pub mod pool;
 pub mod swap;
 
 pub use pool::{
-    compute_radius_from_deposit, derive_vault_pda, initialize_pool_reserves, update_caches,
-    verify_invariant,
+    compute_radius_from_deposit, compute_radius_from_reserves, derive_vault_pda,
+    initialize_pool_reserves, update_caches, verify_invariant,
 };
 pub use swap::{compute_fee, compute_slippage_bps, execute_swap, SwapResult};
 
