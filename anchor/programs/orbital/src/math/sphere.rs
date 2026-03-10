@@ -101,15 +101,21 @@ impl Sphere {
         numerator.checked_div(denominator)
     }
 
-    /// Check sphere invariant with default 0.1% tolerance.
+    /// Check sphere invariant with fixed-point-aware tolerance.
     ///
-    /// tolerance = r² / 1000
+    /// tolerance = r² >> 24 ≈ r² × 6e-8
+    ///
+    /// Derived from Q64.64 squared-operation rounding bounds: each
+    /// `checked_mul` introduces up to 2^-64 relative error; summing n
+    /// terms and squaring yields worst-case O(n · 2^-63). Shifting by
+    /// 24 bits (≈ 6e-8) provides ample headroom for n ≤ 8 while
+    /// rejecting economically significant deviations.
     ///
     /// Returns `Ok(())` if satisfied, `InvariantViolation` error otherwise.
     /// Uses O(n) loop; for O(1) path, use `check_invariant_with_distance_sq`.
     pub fn check_invariant(&self, reserves: &[FixedPoint]) -> Result<()> {
         let r_sq = self.radius_squared()?;
-        let tolerance = FixedPoint::from_raw(r_sq.raw / 1000);
+        let tolerance = FixedPoint::from_raw(r_sq.raw >> 24);
 
         let valid = self.verify_invariant(reserves, tolerance)?;
         require!(valid, crate::errors::OrbitalError::InvariantViolation);
@@ -122,7 +128,7 @@ impl Sphere {
     /// Avoids O(n) re-computation during swap execution.
     pub fn check_invariant_with_distance_sq(&self, distance_sq: FixedPoint) -> Result<()> {
         let r_sq = self.radius_squared()?;
-        let tolerance = FixedPoint::from_raw(r_sq.raw / 1000);
+        let tolerance = FixedPoint::from_raw(r_sq.raw >> 24);
 
         require!(
             distance_sq.approx_eq(r_sq, tolerance),

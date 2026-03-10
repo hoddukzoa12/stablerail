@@ -142,7 +142,14 @@ pub fn execute_swap(
     };
 
     // 5. Apply trade to reserves
-    pool.reserves[token_in] = old_in_reserve.checked_add(net_amount_in)?;
+    //    Guard: reserve_in must not exceed r after the swap. This prevents
+    //    the quadratic sphere equation from admitting two valid amount_out
+    //    roots (branch ambiguity). Reserves beyond r represent a degenerate
+    //    pool state with undefined pricing; blocking here ensures root
+    //    continuity and eliminates the non-continuous-root exploit vector.
+    let new_in = old_in_reserve.checked_add(net_amount_in)?;
+    require!(new_in.raw <= r.raw, OrbitalError::ReserveExceedsRadius);
+    pool.reserves[token_in] = new_in;
     let new_out = old_out_reserve.checked_sub(expected_amount_out)?;
     require!(new_out.raw >= 0, OrbitalError::InsufficientLiquidity);
     pool.reserves[token_out] = new_out;

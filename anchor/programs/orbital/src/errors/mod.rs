@@ -100,6 +100,9 @@ pub enum OrbitalError {
     #[msg("Settlement audit trail creation failed")]
     AuditTrailError,
 
+    #[msg("Reserve exceeds sphere radius — swap would cross branch boundary")]
+    ReserveExceedsRadius,
+
     // ── Pool Validation (appended for code stability) ──
     #[msg("Duplicate token mint in pool")]
     DuplicateTokenMint,
