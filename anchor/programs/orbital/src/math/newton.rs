@@ -13,9 +13,51 @@
 
 use anchor_lang::prelude::*;
 
-use super::sphere::MAX_ASSETS;
 use super::FixedPoint;
 use super::Sphere;
+
+// ══════════════════════════════════════════════════════════════
+// Input validation (shared by analytical and Newton solvers)
+// ══════════════════════════════════════════════════════════════
+
+/// Validate swap inputs common to both analytical and Newton solvers.
+///
+/// Checks:
+/// 1. Reserve slice has at least `n` elements
+/// 2. Token indices are within bounds
+/// 3. Tokens are distinct (no self-swap)
+/// 4. Trade amount is positive
+/// 5. Output reserve is non-zero (has withdrawable liquidity)
+fn validate_swap_inputs(
+    sphere: &Sphere,
+    reserves: &[FixedPoint],
+    token_in: usize,
+    token_out: usize,
+    net_amount_in: FixedPoint,
+) -> Result<()> {
+    let n = sphere.n as usize;
+    require!(
+        reserves.len() >= n,
+        crate::errors::OrbitalError::InvalidAssetCount
+    );
+    require!(
+        token_in < n && token_out < n,
+        crate::errors::OrbitalError::InvalidTokenIndex
+    );
+    require!(
+        token_in != token_out,
+        crate::errors::OrbitalError::SameTokenSwap
+    );
+    require!(
+        net_amount_in.raw > 0,
+        crate::errors::OrbitalError::NegativeTradeAmount
+    );
+    require!(
+        reserves[token_out].raw > 0,
+        crate::errors::OrbitalError::InsufficientLiquidity
+    );
+    Ok(())
+}
 
 // ══════════════════════════════════════════════════════════════
 // Analytical solver (exact, single-sphere)
@@ -48,27 +90,7 @@ pub fn compute_amount_out_analytical(
     token_out: usize,
     net_amount_in: FixedPoint,
 ) -> Result<FixedPoint> {
-    let n = sphere.n as usize;
-    require!(
-        reserves.len() >= n,
-        crate::errors::OrbitalError::InvalidAssetCount
-    );
-    require!(
-        token_in < n && token_out < n,
-        crate::errors::OrbitalError::InvalidTokenIndex
-    );
-    require!(
-        token_in != token_out,
-        crate::errors::OrbitalError::SameTokenSwap
-    );
-    require!(
-        net_amount_in.raw > 0,
-        crate::errors::OrbitalError::NegativeTradeAmount
-    );
-    require!(
-        reserves[token_out].raw > 0,
-        crate::errors::OrbitalError::InsufficientLiquidity
-    );
+    validate_swap_inputs(sphere, reserves, token_in, token_out, net_amount_in)?;
 
     let r = sphere.radius;
     let a = r.checked_sub(reserves[token_in])?; // r - x_in
@@ -153,27 +175,7 @@ impl NewtonSolver {
         token_out: usize,
         net_amount_in: FixedPoint,
     ) -> Result<FixedPoint> {
-        let n = sphere.n as usize;
-        require!(
-            reserves.len() >= n,
-            crate::errors::OrbitalError::InvalidAssetCount
-        );
-        require!(
-            token_in < n && token_out < n,
-            crate::errors::OrbitalError::InvalidTokenIndex
-        );
-        require!(
-            token_in != token_out,
-            crate::errors::OrbitalError::SameTokenSwap
-        );
-        require!(
-            net_amount_in.raw > 0,
-            crate::errors::OrbitalError::NegativeTradeAmount
-        );
-        require!(
-            reserves[token_out].raw > 0,
-            crate::errors::OrbitalError::InsufficientLiquidity
-        );
+        validate_swap_inputs(sphere, reserves, token_in, token_out, net_amount_in)?;
 
         let r = sphere.radius;
         let a = r.checked_sub(reserves[token_in])?;
@@ -335,6 +337,7 @@ fn bisection_solve(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::math::sphere::MAX_ASSETS;
 
     /// Standard test epsilon: ~2^32 ≈ 2.3e-10
     fn eps() -> FixedPoint {
@@ -657,7 +660,7 @@ mod tests {
         let (sphere, reserves) = make_equal_reserves(3_000, 3);
         let d_in = FixedPoint::from_int(10);
 
-        // Solver with max 10 iterations (no bisection fallback)
+        // Solver with max 10 iterations for the Newton phase
         let solver = NewtonSolver::new(10, FixedPoint::from_raw(DEFAULT_EPSILON_RAW));
         let result = solver.solve(&sphere, &reserves, 0, 1, d_in);
 
