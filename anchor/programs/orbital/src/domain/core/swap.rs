@@ -113,6 +113,7 @@ pub fn execute_swap(
         expected_amount_out.is_positive(),
         OrbitalError::NegativeTradeAmount
     );
+    require!(min_amount_out.raw >= 0, OrbitalError::NegativeTradeAmount);
 
     // 2. Fee computation
     let fee = compute_fee(amount_in, pool.fee_rate_bps)?;
@@ -491,6 +492,20 @@ mod tests {
             huge_out,
             FixedPoint::from_int(1),
         );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_swap_rejects_negative_min_amount_out() {
+        let mut pool = init_pool(3, 1_000);
+        pool.fee_rate_bps = 0;
+
+        let amount_in = FixedPoint::from_int(10);
+        let amount_out = compute_valid_amount_out_n3(&pool, amount_in);
+        // Negative min_amount_out should be rejected
+        let negative_min = FixedPoint::from_raw(-1);
+
+        let result = execute_swap(&mut pool, 0, 1, amount_in, amount_out, negative_min);
         assert!(result.is_err());
     }
 }
