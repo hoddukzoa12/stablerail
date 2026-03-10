@@ -65,8 +65,18 @@ pub fn handler<'info>(
     let remaining = &ctx.remaining_accounts;
     require!(
         remaining.len() == 3 * n,
-        OrbitalError::InvalidAssetCount
+        OrbitalError::InvalidRemainingAccounts
     );
+
+    // Reject duplicate mints early (before CPI loop to return correct error code)
+    for i in 0..n {
+        for j in (i + 1)..n {
+            require!(
+                params.token_mints[i] != params.token_mints[j],
+                OrbitalError::DuplicateTokenMint
+            );
+        }
+    }
 
     let pool = &mut ctx.accounts.pool;
 

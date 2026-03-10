@@ -289,5 +289,18 @@ fn test_initialize_pool_creates_vaults_and_transfers() {
             "vault {} should have token account size",
             i
         );
+
+        // Verify vault balance matches initial deposit
+        // SPL token account layout: amount is at bytes [64..72] (little-endian u64)
+        let amount = u64::from_le_bytes(
+            vault_account.data[64..72]
+                .try_into()
+                .expect("amount slice"),
+        );
+        assert_eq!(
+            amount, deposit,
+            "vault {} balance should equal initial deposit",
+            i
+        );
     }
 }

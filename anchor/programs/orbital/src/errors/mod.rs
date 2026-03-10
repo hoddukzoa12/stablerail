@@ -106,4 +106,7 @@ pub enum OrbitalError {
 
     #[msg("Reserve exceeds sphere radius — swap would cross branch boundary")]
     ReserveExceedsRadius,
+
+    #[msg("Wrong number of remaining accounts (expected 3 × n_assets)")]
+    InvalidRemainingAccounts,
 }
