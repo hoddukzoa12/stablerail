@@ -201,6 +201,7 @@ mod tests {
     use super::*;
     use crate::domain::core::pool::initialize_pool_reserves;
     use crate::domain::core::test_helpers::{make_pool, unique_pubkeys};
+    use crate::math::newton::compute_amount_out_analytical;
 
     // ── Test helpers ──
 
@@ -213,30 +214,15 @@ mod tests {
         pool
     }
 
-    /// Compute valid amount_out for n=3 equal reserves using analytical formula.
-    ///
-    /// At equal price point q = r(1 - 1/√n), c = r - q = r/√n.
-    /// After adding d to token_in (net, after fee):
-    ///   d_out = -c + √(c² + 2cd - d²)
-    ///
-    /// This satisfies the sphere invariant exactly.
-    fn compute_valid_amount_out_n3(pool: &PoolState, net_amount_in: FixedPoint) -> FixedPoint {
-        let r = pool.sphere.radius;
-        let n_fp = FixedPoint::from_int(pool.n_assets as i64);
-        let sqrt_n = n_fp.sqrt().unwrap();
-        let c = r.checked_div(sqrt_n).unwrap(); // c = r/√n
-
-        let d = net_amount_in;
-        let c_sq = c.squared().unwrap();
-        let two_cd = c.checked_mul(d).unwrap().checked_mul(FixedPoint::from_int(2)).unwrap();
-        let d_sq = d.squared().unwrap();
-
-        // radicand = c² + 2cd - d²
-        let radicand = c_sq.checked_add(two_cd).unwrap().checked_sub(d_sq).unwrap();
-        let sqrt_val = radicand.sqrt().unwrap();
-
-        // d_out = -c + √(radicand)
-        sqrt_val.checked_sub(c).unwrap()
+    /// Compute valid amount_out using the analytical solver (any n, any reserve state).
+    fn compute_valid_amount_out(pool: &PoolState, token_in: usize, token_out: usize, net_amount_in: FixedPoint) -> FixedPoint {
+        compute_amount_out_analytical(
+            &pool.sphere,
+            pool.active_reserves(),
+            token_in,
+            token_out,
+            net_amount_in,
+        ).unwrap()
     }
 
     // ── Fee tests ──
@@ -295,7 +281,7 @@ mod tests {
         pool.fee_rate_bps = 0; // No fee for simpler test
 
         let amount_in = FixedPoint::from_int(10);
-        let amount_out = compute_valid_amount_out_n3(&pool, amount_in);
+        let amount_out = compute_valid_amount_out(&pool, 0, 1, amount_in);
         let min_out = FixedPoint::from_int(1);
 
         let result = execute_swap(&mut pool, 0, 1, amount_in, amount_out, min_out).unwrap();
@@ -313,7 +299,7 @@ mod tests {
         let old_in = pool.reserves[0];
         let old_out = pool.reserves[1];
         let amount_in = FixedPoint::from_int(10);
-        let amount_out = compute_valid_amount_out_n3(&pool, amount_in);
+        let amount_out = compute_valid_amount_out(&pool, 0, 1, amount_in);
 
         execute_swap(&mut pool, 0, 1, amount_in, amount_out, FixedPoint::from_int(1)).unwrap();
 
@@ -333,7 +319,7 @@ mod tests {
         let amount_in = FixedPoint::from_int(10);
         let fee = compute_fee(amount_in, 30).unwrap();
         let net = amount_in.checked_sub(fee).unwrap();
-        let amount_out = compute_valid_amount_out_n3(&pool, net);
+        let amount_out = compute_valid_amount_out(&pool, 0, 1, net);
 
         execute_swap(&mut pool, 0, 1, amount_in, amount_out, FixedPoint::from_int(1)).unwrap();
 
@@ -360,7 +346,7 @@ mod tests {
         pool.fee_rate_bps = 0;
 
         let amount_in = FixedPoint::from_int(10);
-        let amount_out = compute_valid_amount_out_n3(&pool, amount_in);
+        let amount_out = compute_valid_amount_out(&pool, 0, 1, amount_in);
         // min_amount_out higher than actual → slippage exceeded
         let high_min = FixedPoint::from_int(999);
 
@@ -510,7 +496,7 @@ mod tests {
         pool.fee_rate_bps = 0;
 
         let amount_in = FixedPoint::from_int(10);
-        let amount_out = compute_valid_amount_out_n3(&pool, amount_in);
+        let amount_out = compute_valid_amount_out(&pool, 0, 1, amount_in);
         // Negative min_amount_out should be rejected
         let negative_min = FixedPoint::from_raw(-1);
 
