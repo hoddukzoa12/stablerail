@@ -9,10 +9,13 @@ use crate::state::PoolState;
 pub struct SwapParams {
     pub token_in_index: u8,
     pub token_out_index: u8,
-    pub amount_in: u64,
-    /// Computed off-chain via torus invariant + Newton solver
-    pub expected_amount_out: u64,
-    pub min_amount_out: u64,
+    /// Q64.64 raw value — off-chain SDK passes full fixed-point precision.
+    /// SPL token u64 conversion is handled separately at the transfer layer.
+    pub amount_in: i128,
+    /// Computed off-chain via torus invariant + Newton solver (Q64.64 raw)
+    pub expected_amount_out: i128,
+    /// Minimum acceptable output (Q64.64 raw)
+    pub min_amount_out: i128,
 }
 
 #[derive(Accounts)]
@@ -33,10 +36,10 @@ pub fn handler(ctx: Context<ExecuteSwap>, params: SwapParams) -> Result<()> {
     let pool_key = ctx.accounts.pool.key();
     let pool = &mut ctx.accounts.pool;
 
-    // Convert u64 params to FixedPoint
-    let amount_in = FixedPoint::checked_from_u64(params.amount_in)?;
-    let expected_amount_out = FixedPoint::checked_from_u64(params.expected_amount_out)?;
-    let min_amount_out = FixedPoint::checked_from_u64(params.min_amount_out)?;
+    // Wrap Q64.64 raw values — no precision loss from u64 quantization
+    let amount_in = FixedPoint::from_raw(params.amount_in);
+    let expected_amount_out = FixedPoint::from_raw(params.expected_amount_out);
+    let min_amount_out = FixedPoint::from_raw(params.min_amount_out);
 
     // Execute swap via domain logic
     let result = swap::execute_swap(
@@ -68,8 +71,8 @@ pub fn handler(ctx: Context<ExecuteSwap>, params: SwapParams) -> Result<()> {
         "Swap: {} -> {}, in={}, out={}, fee={}, slippage={}bps",
         params.token_in_index,
         params.token_out_index,
-        params.amount_in,
-        params.expected_amount_out,
+        result.amount_in.raw,
+        result.amount_out.raw,
         result.fee.raw,
         result.slippage_bps
     );
