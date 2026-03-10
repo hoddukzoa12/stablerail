@@ -101,12 +101,13 @@ pub fn add_liquidity_to_pool(
 /// Workflow:
 ///   1. Validate removal amount
 ///   2. Compute LP's fraction: remove_amount / total_interior_liquidity
-///   3. Calculate proportional per-token returns
-///   4. Subtract returns from reserves
-///   5. Subtract from total_interior_liquidity
-///   6. Recompute sphere radius
-///   7. Update caches
-///   8. Verify sphere invariant (post-condition)
+///   3. Calculate proportional per-token returns (truncated to u64)
+///   4. Reject if all returns round to zero (prevents zero-payout burns)
+///   5. Subtract truncated returns from reserves (aligned with SPL transfers)
+///   6. Subtract from total_interior_liquidity
+///   7. Recompute sphere radius
+///   8. Update caches
+///   9. Verify sphere invariant (post-condition)
 ///
 /// Precondition: position ownership validated by instruction handler.
 /// SPL token transfers executed by instruction handler after this returns.
@@ -133,7 +134,7 @@ pub fn remove_liquidity_from_pool(
     // 2. Compute fraction
     let fraction = remove_amount.checked_div(pool.total_interior_liquidity)?;
 
-    // 3. Calculate proportional returns
+    // 3. Calculate proportional returns (truncated to integer token amounts)
     let mut return_amounts = [FixedPoint::zero(); MAX_ASSETS];
     let mut return_amounts_u64 = [0u64; MAX_ASSETS];
     for i in 0..n {
@@ -141,25 +142,31 @@ pub fn remove_liquidity_from_pool(
         return_amounts_u64[i] = return_amounts[i].to_u64()?;
     }
 
-    // 4. Subtract returns from reserves
+    // 4. Reject if all returns round to zero (prevents zero-payout burns)
+    let has_nonzero = return_amounts_u64[..n].iter().any(|&a| a > 0);
+    require!(has_nonzero, OrbitalError::WithdrawalTooSmall);
+
+    // 5. Subtract truncated returns from reserves (aligned with SPL transfers
+    //    to prevent reserve/vault drift from fractional rounding).
     for i in 0..n {
-        pool.reserves[i] = pool.reserves[i].checked_sub(return_amounts[i])?;
+        let transferred = FixedPoint::from_int(return_amounts_u64[i] as i64);
+        pool.reserves[i] = pool.reserves[i].checked_sub(transferred)?;
     }
 
-    // 5. Subtract from total liquidity
+    // 6. Subtract from total liquidity
     pool.total_interior_liquidity = pool.total_interior_liquidity.checked_sub(remove_amount)?;
 
-    // 6. Recompute sphere radius
+    // 7. Recompute sphere radius
     let new_radius = compute_radius_from_reserves(&pool.reserves, pool.n_assets)?;
     pool.sphere = Sphere {
         radius: new_radius,
         n: pool.n_assets,
     };
 
-    // 7. Update caches
+    // 8. Update caches
     update_caches(pool)?;
 
-    // 8. Post-condition: invariant must hold
+    // 9. Post-condition: invariant must hold
     verify_invariant(pool)?;
 
     Ok(RemoveLiquidityResult {
@@ -331,6 +338,16 @@ mod tests {
     fn test_remove_liquidity_rejects_zero() {
         let mut pool = init_pool(3, 100);
         assert!(remove_liquidity_from_pool(&mut pool, FixedPoint::zero()).is_err());
+    }
+
+    #[test]
+    fn test_remove_liquidity_rejects_dust_withdrawal() {
+        // P1: tiny withdrawal where all per-token returns truncate to 0
+        let mut pool = init_pool(3, 1_000_000); // large pool
+        // total_interior_liquidity = 3,000,000
+        // fraction = 1 / 3,000,000 → per-asset return = 1,000,000 * (1/3,000,000) ≈ 0.333 → truncates to 0
+        let dust = FixedPoint::from_int(1);
+        assert!(remove_liquidity_from_pool(&mut pool, dust).is_err());
     }
 
     #[test]

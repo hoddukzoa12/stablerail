@@ -144,8 +144,9 @@ pub fn derive_vault_pda(
 ///   2. Compute sphere radius: r = D·√n/(√n-1)
 ///   3. Set all active reserves to deposit amount
 ///   4. Store token mints and vault addresses
-///   5. Recompute alpha_cache and w_norm_sq_cache
-///   6. Verify sphere invariant (post-condition)
+///   5. Seed total_interior_liquidity = deposit × n (proportional withdrawal denominator)
+///   6. Recompute alpha_cache and w_norm_sq_cache
+///   7. Verify sphere invariant (post-condition)
 ///
 /// Precondition: `pool.n_assets`, `pool.fee_rate_bps`, `pool.bump`,
 /// `pool.authority` already set by the instruction handler.

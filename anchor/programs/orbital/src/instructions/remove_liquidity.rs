@@ -9,8 +9,10 @@ use crate::state::{PoolState, PositionState};
 
 #[derive(AnchorSerialize, AnchorDeserialize)]
 pub struct RemoveLiquidityParams {
-    /// Liquidity units to remove (in token base units).
-    /// Use the full `position.liquidity` value for complete withdrawal.
+    /// Integer liquidity units to remove.
+    /// Liquidity is the sum of per-token deposits (e.g., 500K × 3 assets = 1,500,000).
+    /// For complete withdrawal, pass the integer part of your position's liquidity
+    /// (on-chain `position.liquidity` is Q64.64; extract via `raw >> 64`).
     pub liquidity_amount: u64,
 }
 
