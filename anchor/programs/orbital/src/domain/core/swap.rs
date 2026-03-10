@@ -68,8 +68,16 @@ pub fn compute_slippage_bps(
         return Ok(0);
     }
     let diff = execution_price.checked_sub(mid_price)?;
-    let ratio = diff.checked_div(mid_price)?;
-    let bps_fp = ratio.checked_mul(FixedPoint::from_int(10_000))?;
+    // Near-zero mid_price can overflow Q64.64 division/multiplication.
+    // Slippage is informational, so saturate to u16::MAX on overflow.
+    let ratio = match diff.checked_div(mid_price) {
+        Ok(r) => r,
+        Err(_) => return Ok(u16::MAX),
+    };
+    let bps_fp = match ratio.checked_mul(FixedPoint::from_int(10_000)) {
+        Ok(b) => b,
+        Err(_) => return Ok(u16::MAX),
+    };
     let bps = bps_fp.to_u64()?;
     Ok((bps.min(u16::MAX as u64)) as u16)
 }
