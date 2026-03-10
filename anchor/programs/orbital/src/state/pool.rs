@@ -10,6 +10,8 @@ pub struct PoolState {
     pub n_assets: u8,
     pub token_mints: [Pubkey; MAX_ASSETS],
     pub token_vaults: [Pubkey; MAX_ASSETS],
+    /// Bump seeds for vault PDAs (needed for CPI signing)
+    pub vault_bumps: [u8; MAX_ASSETS],
     pub fee_rate_bps: u16,
     pub total_interior_liquidity: FixedPoint,
     pub total_boundary_liquidity: FixedPoint,
@@ -22,14 +24,14 @@ pub struct PoolState {
     pub created_at: i64,
     /// Monotonically incrementing counter for position PDA derivation
     pub position_count: u64,
-    pub _reserved: [u8; 120],
+    pub _reserved: [u8; 112],
 }
 
 impl PoolState {
-    // +8 for position_count, -8 from _reserved (120 instead of 128) = same total
+    // vault_bumps[8] = +8, _reserved reduced 120→112 = net zero change
     pub const SIZE: usize = 8 + 1 + 32 + 17 + (16 * MAX_ASSETS) + 1
-        + (32 * MAX_ASSETS) + (32 * MAX_ASSETS) + 2 + 16 + 16 + 16 + 16
-        + 2 + 1 + 16 + 16 + 8 + 8 + 120;
+        + (32 * MAX_ASSETS) + (32 * MAX_ASSETS) + MAX_ASSETS + 2 + 16 + 16 + 16 + 16
+        + 2 + 1 + 16 + 16 + 8 + 8 + 112;
 
     pub fn active_reserves(&self) -> &[FixedPoint] {
         &self.reserves[..self.n_assets as usize]

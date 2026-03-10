@@ -19,7 +19,10 @@ pub mod orbital {
     //  Core Context — AMM Math Engine
     // ═══════════════════════════════════════════
 
-    pub fn initialize_pool(ctx: Context<InitializePool>, params: InitPoolParams) -> Result<()> {
+    pub fn initialize_pool<'info>(
+        ctx: Context<'_, '_, 'info, 'info, InitializePool<'info>>,
+        params: InitPoolParams,
+    ) -> Result<()> {
         instructions::initialize_pool::handler(ctx, params)
     }
 
