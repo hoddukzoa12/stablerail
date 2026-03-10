@@ -71,7 +71,7 @@ pub fn compute_slippage_bps(
     let ratio = diff.checked_div(mid_price)?;
     let bps_fp = ratio.checked_mul(FixedPoint::from_int(10_000))?;
     let bps = bps_fp.to_u64()?;
-    Ok(if bps > u16::MAX as u64 { u16::MAX } else { bps as u16 })
+    Ok((bps.min(u16::MAX as u64)) as u16)
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -190,42 +190,9 @@ pub fn execute_swap(
 mod tests {
     use super::*;
     use crate::domain::core::pool::initialize_pool_reserves;
-    use crate::math::sphere::{Sphere, MAX_ASSETS};
-
-    use anchor_lang::prelude::Pubkey;
+    use crate::domain::core::test_helpers::{make_pool, unique_pubkeys};
 
     // ── Test helpers ──
-
-    fn unique_pubkeys(n: usize) -> Vec<Pubkey> {
-        (0..n).map(|_| Pubkey::new_unique()).collect()
-    }
-
-    fn make_pool(n: u8) -> PoolState {
-        PoolState {
-            bump: 0,
-            authority: Pubkey::new_unique(),
-            sphere: Sphere {
-                radius: FixedPoint::zero(),
-                n,
-            },
-            reserves: [FixedPoint::zero(); MAX_ASSETS],
-            n_assets: n,
-            token_mints: [Pubkey::default(); MAX_ASSETS],
-            token_vaults: [Pubkey::default(); MAX_ASSETS],
-            fee_rate_bps: 30,
-            total_interior_liquidity: FixedPoint::zero(),
-            total_boundary_liquidity: FixedPoint::zero(),
-            alpha_cache: FixedPoint::zero(),
-            w_norm_sq_cache: FixedPoint::zero(),
-            tick_count: 0,
-            is_active: true,
-            total_volume: FixedPoint::zero(),
-            total_fees: FixedPoint::zero(),
-            created_at: 0,
-            position_count: 0,
-            _reserved: [0u8; 120],
-        }
-    }
 
     fn init_pool(n: u8, deposit: i64) -> PoolState {
         let mut pool = make_pool(n);
