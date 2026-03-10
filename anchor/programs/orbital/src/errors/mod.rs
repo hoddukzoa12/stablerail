@@ -100,10 +100,16 @@ pub enum OrbitalError {
     #[msg("Settlement audit trail creation failed")]
     AuditTrailError,
 
-    // ── Pool Validation (appended for code stability) ──
+    // ── Pool Validation (new variants appended to preserve existing error discriminants) ──
     #[msg("Duplicate token mint in pool")]
     DuplicateTokenMint,
 
     #[msg("Reserve exceeds sphere radius — swap would cross branch boundary")]
     ReserveExceedsRadius,
+
+    #[msg("Wrong number of remaining accounts (expected 3 × n_assets)")]
+    InvalidRemainingAccounts,
+
+    #[msg("Vault PDA address does not match expected derivation")]
+    InvalidVaultAddress,
 }

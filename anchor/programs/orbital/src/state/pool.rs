@@ -10,6 +10,8 @@ pub struct PoolState {
     pub n_assets: u8,
     pub token_mints: [Pubkey; MAX_ASSETS],
     pub token_vaults: [Pubkey; MAX_ASSETS],
+    /// Bump seeds for vault PDAs (needed for CPI signing)
+    pub vault_bumps: [u8; MAX_ASSETS],
     pub fee_rate_bps: u16,
     pub total_interior_liquidity: FixedPoint,
     pub total_boundary_liquidity: FixedPoint,
@@ -22,14 +24,31 @@ pub struct PoolState {
     pub created_at: i64,
     /// Monotonically incrementing counter for position PDA derivation
     pub position_count: u64,
-    pub _reserved: [u8; 120],
+    pub _reserved: [u8; 112],
 }
 
 impl PoolState {
-    // +8 for position_count, -8 from _reserved (120 instead of 128) = same total
-    pub const SIZE: usize = 8 + 1 + 32 + 17 + (16 * MAX_ASSETS) + 1
-        + (32 * MAX_ASSETS) + (32 * MAX_ASSETS) + 2 + 16 + 16 + 16 + 16
-        + 2 + 1 + 16 + 16 + 8 + 8 + 120;
+    pub const SIZE: usize = 8               // anchor discriminator
+        + 1                                  // bump
+        + 32                                 // authority
+        + 17                                 // sphere (FixedPoint=16 + u8=1)
+        + (16 * MAX_ASSETS)                  // reserves
+        + 1                                  // n_assets
+        + (32 * MAX_ASSETS)                  // token_mints
+        + (32 * MAX_ASSETS)                  // token_vaults
+        + MAX_ASSETS                         // vault_bumps
+        + 2                                  // fee_rate_bps
+        + 16                                 // total_interior_liquidity
+        + 16                                 // total_boundary_liquidity
+        + 16                                 // alpha_cache
+        + 16                                 // w_norm_sq_cache
+        + 2                                  // tick_count
+        + 1                                  // is_active
+        + 16                                 // total_volume
+        + 16                                 // total_fees
+        + 8                                  // created_at
+        + 8                                  // position_count
+        + 112;                               // _reserved
 
     pub fn active_reserves(&self) -> &[FixedPoint] {
         &self.reserves[..self.n_assets as usize]

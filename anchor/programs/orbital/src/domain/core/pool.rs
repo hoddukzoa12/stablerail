@@ -122,7 +122,10 @@ pub fn initialize_pool_reserves(
         per_asset_deposit.is_positive(),
         OrbitalError::InvalidLiquidityAmount
     );
-    // Reject default (zero) and duplicate mints (O(n²) is fine for n ≤ MAX_ASSETS = 8)
+    // Reject default (zero) and duplicate mints (O(n²) is fine for n ≤ MAX_ASSETS = 8).
+    // Note: duplicate-mint check also runs early in the instruction handler (before CPI)
+    // to return OrbitalError::DuplicateTokenMint instead of opaque system program errors.
+    // This check remains as a domain-level invariant guard for any future callers.
     for i in 0..n_usize {
         require!(
             token_mints[i] != Pubkey::default(),
