@@ -127,16 +127,17 @@ pub fn execute_swap(
     // 4. Snapshot pre-swap mid-market price for slippage calculation
     //    mid_price = (r - reserve_out) / (r - reserve_in)
     //    When reserve_in == r, denominator is zero → mid-price is infinite.
-    //    An infinite mid-price means any finite execution price is strictly
-    //    better, so slippage defaults to 0 (handled in step 9).
+    //    When either distance is zero the mid-price is degenerate (infinite
+    //    or zero) and slippage comparison is meaningless → defaults to 0
+    //    (handled in step 9).
     let r = pool.sphere.radius;
     let old_in_reserve = pool.reserves[token_in];
     let old_out_reserve = pool.reserves[token_out];
     let mid_price_den = r.checked_sub(old_in_reserve)?;
-    let mid_price = if mid_price_den.is_zero() {
+    let mid_price_num = r.checked_sub(old_out_reserve)?;
+    let mid_price = if mid_price_den.is_zero() || mid_price_num.is_zero() {
         None
     } else {
-        let mid_price_num = r.checked_sub(old_out_reserve)?;
         Some(mid_price_num.checked_div(mid_price_den)?)
     };
 
@@ -160,7 +161,7 @@ pub fn execute_swap(
     let execution_price = amount_in.checked_div(expected_amount_out)?;
     let slippage_bps = match mid_price {
         Some(mp) => compute_slippage_bps(mp, execution_price)?,
-        // reserve_in == radius → infinite mid-price → no measurable slippage
+        // degenerate mid-price (infinite or zero) → no measurable slippage
         None => 0u16,
     };
 
@@ -458,6 +459,45 @@ mod tests {
                 assert!(
                     !err_str.contains("DivisionByZero"),
                     "Swap should not fail with DivisionByZero when reserve == radius"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_swap_succeeds_when_reserve_out_at_radius() {
+        // When reserve_out == radius, mid_price numerator is zero.
+        // The swap must not abort with DivisionByZero; slippage defaults to 0.
+        let mut pool = init_pool(3, 1_000);
+        pool.fee_rate_bps = 0;
+
+        let r = pool.sphere.radius;
+        let q = pool.reserves[2];
+
+        // Set x1 (token_out) = r, solve for x0 to preserve sphere invariant:
+        //   (r-x0)^2 = r^2 - (r-q)^2
+        pool.reserves[1] = r;
+        let r_sq = r.squared().unwrap();
+        let c = r.checked_sub(q).unwrap();
+        let c_sq = c.squared().unwrap();
+        let rem = r_sq.checked_sub(c_sq).unwrap();
+        pool.reserves[0] = r.checked_sub(rem.sqrt().unwrap()).unwrap();
+        update_caches(&mut pool).unwrap();
+
+        // Small swap: token 0 → token 1
+        let amount_in = FixedPoint::from_int(1);
+        let amount_out = FixedPoint::one(); // tiny amount
+        let result = execute_swap(
+            &mut pool, 0, 1, amount_in, amount_out, FixedPoint::from_int(0),
+        );
+
+        match result {
+            Ok(sr) => assert_eq!(sr.slippage_bps, 0),
+            Err(e) => {
+                let err_str = format!("{:?}", e);
+                assert!(
+                    !err_str.contains("DivisionByZero"),
+                    "Swap should not fail with DivisionByZero when reserve_out == radius"
                 );
             }
         }
