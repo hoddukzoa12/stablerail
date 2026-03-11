@@ -36,6 +36,7 @@ pub struct CreatePolicy<'info> {
 }
 
 pub fn handler(ctx: Context<CreatePolicy>, params: CreatePolicyParams) -> Result<()> {
+    let policy_key = ctx.accounts.policy.key();
     let policy = &mut ctx.accounts.policy;
 
     policy.bump = ctx.bumps.policy;
@@ -53,6 +54,7 @@ pub fn handler(ctx: Context<CreatePolicy>, params: CreatePolicyParams) -> Result
     policy.updated_at = clock.unix_timestamp;
 
     emit!(PolicyCreated {
+        policy: policy_key,
         pool: ctx.accounts.pool.key(),
         authority: ctx.accounts.authority.key(),
         max_trade_amount: policy.max_trade_amount.raw,

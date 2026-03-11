@@ -118,6 +118,8 @@ pub struct LiquidityRemoved {
 /// Emitted when a new policy is created via `create_policy`.
 #[event]
 pub struct PolicyCreated {
+    /// Policy account pubkey
+    pub policy: Pubkey,
     /// Pool account pubkey
     pub pool: Pubkey,
     /// Policy authority (must match pool authority)

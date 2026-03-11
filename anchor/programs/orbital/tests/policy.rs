@@ -693,3 +693,58 @@ fn test_allowlist_rejects_full() {
         "expected AllowlistFull (6024), got: {err}"
     );
 }
+
+// ══════════════════════════════════════════════
+// Test 7: update_policy rejects non-authority
+// ══════════════════════════════════════════════
+
+#[test]
+fn test_update_policy_rejects_non_authority() {
+    let mut env = setup_pool();
+    let auth = env.authority.insecure_clone();
+
+    let policy_pda = send_create_policy(&mut env, &auth, 1_000_000, 10_000_000)
+        .expect("create_policy should succeed");
+
+    // Create a different signer who is NOT the policy authority
+    let impostor = Keypair::new();
+    env.svm
+        .airdrop(&impostor.pubkey(), 5_000_000_000)
+        .unwrap();
+
+    let result = send_update_policy(&mut env, &impostor, &policy_pda, Some(2_000_000), None, None);
+    let err = result.unwrap_err();
+    assert_eq!(
+        extract_anchor_error_code(&err),
+        Some(ERROR_UNAUTHORIZED),
+        "expected Unauthorized (6021), got: {err}"
+    );
+}
+
+// ══════════════════════════════════════════════
+// Test 8: manage_allowlist rejects non-authority
+// ══════════════════════════════════════════════
+
+#[test]
+fn test_manage_allowlist_rejects_non_authority() {
+    let mut env = setup_pool();
+    let auth = env.authority.insecure_clone();
+
+    let policy_pda = send_create_policy(&mut env, &auth, 1_000_000, 10_000_000)
+        .expect("create_policy should succeed");
+
+    // Create a different signer who is NOT the policy authority
+    let impostor = Keypair::new();
+    env.svm
+        .airdrop(&impostor.pubkey(), 5_000_000_000)
+        .unwrap();
+
+    let member = Pubkey::new_unique();
+    let result = send_manage_allowlist(&mut env, &impostor, &policy_pda, 0, &member);
+    let err = result.unwrap_err();
+    assert_eq!(
+        extract_anchor_error_code(&err),
+        Some(ERROR_UNAUTHORIZED),
+        "expected Unauthorized (6021), got: {err}"
+    );
+}

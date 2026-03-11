@@ -118,4 +118,7 @@ pub enum OrbitalError {
 
     #[msg("Swap output rounds to zero after truncation")]
     SwapOutputTooSmall,
+
+    #[msg("No fields to update")]
+    NoFieldsToUpdate,
 }

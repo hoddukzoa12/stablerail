@@ -25,6 +25,13 @@ pub struct UpdatePolicy<'info> {
 }
 
 pub fn handler(ctx: Context<UpdatePolicy>, params: UpdatePolicyParams) -> Result<()> {
+    require!(
+        params.max_trade_amount.is_some()
+            || params.max_daily_volume.is_some()
+            || params.is_active.is_some(),
+        OrbitalError::NoFieldsToUpdate
+    );
+
     let policy = &mut ctx.accounts.policy;
 
     if let Some(max_trade) = params.max_trade_amount {
