@@ -54,7 +54,7 @@ pub fn add_liquidity_to_pool(
     let n = pool.n_assets as usize;
 
     // 1. Validate deposits
-    require!(deposits.len() >= n, OrbitalError::InvalidAssetCount);
+    require!(deposits.len() == n, OrbitalError::InvalidAssetCount);
     for i in 0..n {
         require!(
             deposits[i].is_positive(),
@@ -327,6 +327,41 @@ mod tests {
         // fraction = 1 / 3,000,000 → per-asset return = 1,000,000 * (1/3,000,000) ≈ 0.333 → truncates to 0
         let dust = FixedPoint::from_int(1);
         assert!(remove_liquidity_from_pool(&mut pool, dust).is_err());
+    }
+
+    #[test]
+    fn test_remove_liquidity_partial_then_remainder() {
+        let mut pool = init_pool(3, 100);
+        // total_interior_liquidity = 300
+
+        // First removal: 100 of 300 = 1/3
+        let remove1 = FixedPoint::from_int(100);
+        let result1 = remove_liquidity_from_pool(&mut pool, remove1).unwrap();
+
+        // Each reserve should decrease by ~33: 100 * (100/300) ≈ 33
+        for i in 0..3 {
+            assert_eq!(result1.return_amounts_u64[i], 33);
+        }
+        // total_interior_liquidity should be 200
+        assert_eq!(
+            pool.total_interior_liquidity.raw,
+            FixedPoint::from_int(200).raw
+        );
+
+        // Second removal: remaining 200
+        let remove2 = FixedPoint::from_int(200);
+        let result2 = remove_liquidity_from_pool(&mut pool, remove2).unwrap();
+
+        // Should get all remaining reserves
+        for i in 0..3 {
+            // reserve was ~67 after first removal, all returned now
+            assert!(result2.return_amounts_u64[i] > 0);
+        }
+        // total_interior_liquidity should be 0
+        assert_eq!(pool.total_interior_liquidity.raw, 0);
+
+        // Invariant should hold (empty pool)
+        verify_invariant(&pool).unwrap();
     }
 
     #[test]

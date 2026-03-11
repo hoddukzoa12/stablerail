@@ -64,14 +64,14 @@ pub fn handler<'info>(
 
     // Validate removal amount against position balance
     let remove_amount = FixedPoint::checked_from_u64(params.liquidity_amount)?;
+    require!(
+        remove_amount.is_positive(),
+        OrbitalError::InvalidLiquidityAmount
+    );
     let position = &ctx.accounts.position;
     require!(
         remove_amount.raw <= position.liquidity.raw,
         OrbitalError::InsufficientPositionBalance
-    );
-    require!(
-        remove_amount.is_positive(),
-        OrbitalError::InvalidLiquidityAmount
     );
 
     // remaining_accounts layout: [0..n) vaults, [n..2n) provider ATAs

@@ -216,9 +216,11 @@ pub fn initialize_pool_reserves(
         pool.token_vaults[i] = token_vaults[i];
     }
 
-    // 5. Seed total_interior_liquidity with initial deposit sum
+    // 5. Seed total_interior_liquidity with initial deposit sum.
     //    This serves as the denominator for proportional withdrawals.
     //    The authority's initial deposit is "implicit liquidity" (no Position PDA).
+    //    WARNING: These tokens are permanently locked — no withdrawal path exists.
+    //    This is analogous to Uniswap V2's MINIMUM_LIQUIDITY mechanism.
     let n_fp = FixedPoint::from_int(n as i64);
     pool.total_interior_liquidity = per_asset_deposit.checked_mul(n_fp)?;
 
