@@ -8,7 +8,8 @@
 //! Run:
 //!   cargo test --test policy -- --nocapture
 
-use std::path::PathBuf;
+mod common;
+use common::*;
 
 use litesvm::LiteSVM;
 use solana_sdk::{
@@ -20,14 +21,6 @@ use solana_sdk::{
     transaction::Transaction,
 };
 
-// ── Constants ──
-
-const PROGRAM_ID: Pubkey = solana_sdk::pubkey!("C7dFX4QVV8QCdzP4fZi3Vcx8oP1cYhTaXD7kvvat8W1w");
-const TOKEN_PROGRAM_ID: Pubkey = solana_sdk::pubkey!("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
-const ATA_PROGRAM_ID: Pubkey =
-    solana_sdk::pubkey!("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
-const MAX_ASSETS: usize = 8;
-
 // Q64.64 fractional bits for FixedPoint raw comparison
 const FRAC_BITS: u32 = 64;
 
@@ -35,120 +28,9 @@ const FRAC_BITS: u32 = 64;
 const ERROR_UNAUTHORIZED: u32 = 6021;
 const ERROR_ALLOWLIST_FULL: u32 = 6024;
 const ERROR_ALREADY_IN_ALLOWLIST: u32 = 6025;
+const ERROR_NO_FIELDS_TO_UPDATE: u32 = 6036;
 
-// ── Shared Helpers (from swap.rs pattern) ──
-
-fn program_so_path() -> PathBuf {
-    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.pop(); // → programs
-    path.pop(); // → anchor
-    path.push("target/deploy/orbital.so");
-    path
-}
-
-fn create_mint(svm: &mut LiteSVM, payer: &Keypair, mint: &Keypair, decimals: u8) {
-    let rent = svm.minimum_balance_for_rent_exemption(82);
-    let create_ix = solana_sdk::system_instruction::create_account(
-        &payer.pubkey(),
-        &mint.pubkey(),
-        rent,
-        82,
-        &TOKEN_PROGRAM_ID,
-    );
-    let mut init_data = vec![20]; // InitializeMint2
-    init_data.push(decimals);
-    init_data.extend_from_slice(payer.pubkey().as_ref());
-    init_data.push(0); // no freeze authority
-
-    let init_ix = Instruction {
-        program_id: TOKEN_PROGRAM_ID,
-        accounts: vec![AccountMeta::new(mint.pubkey(), false)],
-        data: init_data,
-    };
-
-    let blockhash = svm.latest_blockhash();
-    let tx = Transaction::new_signed_with_payer(
-        &[create_ix, init_ix],
-        Some(&payer.pubkey()),
-        &[payer, mint],
-        blockhash,
-    );
-    svm.send_transaction(tx).unwrap();
-}
-
-fn create_ata_and_mint(
-    svm: &mut LiteSVM,
-    payer: &Keypair,
-    mint: &Pubkey,
-    owner: &Pubkey,
-    amount: u64,
-) -> Pubkey {
-    let ata = spl_associated_token_account_id(owner, mint);
-
-    let create_ata_ix = Instruction {
-        program_id: ATA_PROGRAM_ID,
-        accounts: vec![
-            AccountMeta::new(payer.pubkey(), true),
-            AccountMeta::new(ata, false),
-            AccountMeta::new_readonly(*owner, false),
-            AccountMeta::new_readonly(*mint, false),
-            AccountMeta::new_readonly(system_program::id(), false),
-            AccountMeta::new_readonly(TOKEN_PROGRAM_ID, false),
-        ],
-        data: vec![],
-    };
-
-    let mut mint_data = vec![7]; // MintTo
-    mint_data.extend_from_slice(&amount.to_le_bytes());
-
-    let mint_to_ix = Instruction {
-        program_id: TOKEN_PROGRAM_ID,
-        accounts: vec![
-            AccountMeta::new(*mint, false),
-            AccountMeta::new(ata, false),
-            AccountMeta::new_readonly(payer.pubkey(), true),
-        ],
-        data: mint_data,
-    };
-
-    let blockhash = svm.latest_blockhash();
-    let tx = Transaction::new_signed_with_payer(
-        &[create_ata_ix, mint_to_ix],
-        Some(&payer.pubkey()),
-        &[payer],
-        blockhash,
-    );
-    svm.send_transaction(tx).unwrap();
-
-    ata
-}
-
-fn spl_associated_token_account_id(wallet: &Pubkey, mint: &Pubkey) -> Pubkey {
-    Pubkey::find_program_address(
-        &[
-            wallet.as_ref(),
-            TOKEN_PROGRAM_ID.as_ref(),
-            mint.as_ref(),
-        ],
-        &ATA_PROGRAM_ID,
-    )
-    .0
-}
-
-fn anchor_discriminator(name: &str) -> [u8; 8] {
-    let hash = <sha2::Sha256 as sha2::Digest>::digest(name.as_bytes());
-    let mut disc = [0u8; 8];
-    disc.copy_from_slice(&hash[..8]);
-    disc
-}
-
-fn derive_pool_pda(authority: &Pubkey) -> (Pubkey, u8) {
-    Pubkey::find_program_address(&[b"pool", authority.as_ref()], &PROGRAM_ID)
-}
-
-fn derive_vault_pda(pool: &Pubkey, mint: &Pubkey) -> (Pubkey, u8) {
-    Pubkey::find_program_address(&[b"vault", pool.as_ref(), mint.as_ref()], &PROGRAM_ID)
-}
+// ── Policy-Specific PDA Derivation ──
 
 fn derive_policy_pda(pool: &Pubkey, authority: &Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(
@@ -166,32 +48,7 @@ fn u64_to_fp_raw(v: u64) -> i128 {
     (v as i128) << FRAC_BITS
 }
 
-/// Extract Anchor custom error code from litesvm error string.
-fn extract_anchor_error_code(err: &str) -> Option<u32> {
-    let start = err.find("Custom(")? + 7;
-    let end = start + err[start..].find(')')?;
-    err[start..end].parse().ok()
-}
-
 // ── Instruction Data Builders ──
-
-fn build_init_pool_data(
-    n_assets: u8,
-    fee_rate_bps: u16,
-    initial_deposit: u64,
-    token_mints: [Pubkey; MAX_ASSETS],
-) -> Vec<u8> {
-    let disc = anchor_discriminator("global:initialize_pool");
-    let mut data = Vec::new();
-    data.extend_from_slice(&disc);
-    data.push(n_assets);
-    data.extend_from_slice(&fee_rate_bps.to_le_bytes());
-    data.extend_from_slice(&initial_deposit.to_le_bytes());
-    for mint in &token_mints {
-        data.extend_from_slice(mint.as_ref());
-    }
-    data
-}
 
 fn build_create_policy_data(max_trade_amount: u64, max_daily_volume: u64) -> Vec<u8> {
     let disc = anchor_discriminator("global:create_policy");
@@ -746,5 +603,26 @@ fn test_manage_allowlist_rejects_non_authority() {
         extract_anchor_error_code(&err),
         Some(ERROR_UNAUTHORIZED),
         "expected Unauthorized (6021), got: {err}"
+    );
+}
+
+// ══════════════════════════════════════════════
+// Test 9: update_policy rejects all-None params
+// ══════════════════════════════════════════════
+
+#[test]
+fn test_update_policy_rejects_no_fields() {
+    let mut env = setup_pool();
+    let auth = env.authority.insecure_clone();
+
+    let policy_pda = send_create_policy(&mut env, &auth, 1_000_000, 10_000_000)
+        .expect("create_policy should succeed");
+
+    let result = send_update_policy(&mut env, &auth, &policy_pda, None, None, None);
+    let err = result.unwrap_err();
+    assert_eq!(
+        extract_anchor_error_code(&err),
+        Some(ERROR_NO_FIELDS_TO_UPDATE),
+        "expected NoFieldsToUpdate (6037), got: {err}"
     );
 }
