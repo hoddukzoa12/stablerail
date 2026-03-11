@@ -31,77 +31,9 @@ const ERROR_ALREADY_IN_ALLOWLIST: u32 = 6025;
 const ERROR_NOT_IN_ALLOWLIST: u32 = 6026;
 const ERROR_NO_FIELDS_TO_UPDATE: u32 = 6036;
 
-// ── Policy-Specific PDA Derivation ──
-
-fn derive_policy_pda(pool: &Pubkey, authority: &Pubkey) -> (Pubkey, u8) {
-    Pubkey::find_program_address(
-        &[b"policy", pool.as_ref(), authority.as_ref()],
-        &PROGRAM_ID,
-    )
-}
-
-fn derive_allowlist_pda(policy: &Pubkey) -> (Pubkey, u8) {
-    Pubkey::find_program_address(&[b"allowlist", policy.as_ref()], &PROGRAM_ID)
-}
-
 /// Convert u64 to Q64.64 raw i128 (matches FixedPoint::checked_from_u64)
 fn u64_to_fp_raw(v: u64) -> i128 {
     (v as i128) << FRAC_BITS
-}
-
-// ── Instruction Data Builders ──
-
-fn build_create_policy_data(max_trade_amount: u64, max_daily_volume: u64) -> Vec<u8> {
-    let disc = anchor_discriminator("global:create_policy");
-    let mut data = Vec::new();
-    data.extend_from_slice(&disc);
-    data.extend_from_slice(&max_trade_amount.to_le_bytes());
-    data.extend_from_slice(&max_daily_volume.to_le_bytes());
-    data
-}
-
-fn build_update_policy_data(
-    max_trade_amount: Option<u64>,
-    max_daily_volume: Option<u64>,
-    is_active: Option<bool>,
-) -> Vec<u8> {
-    let disc = anchor_discriminator("global:update_policy");
-    let mut data = Vec::new();
-    data.extend_from_slice(&disc);
-
-    // Borsh Option<u64>: 0 = None, 1 + le_bytes = Some
-    match max_trade_amount {
-        None => data.push(0),
-        Some(v) => {
-            data.push(1);
-            data.extend_from_slice(&v.to_le_bytes());
-        }
-    }
-    match max_daily_volume {
-        None => data.push(0),
-        Some(v) => {
-            data.push(1);
-            data.extend_from_slice(&v.to_le_bytes());
-        }
-    }
-    match is_active {
-        None => data.push(0),
-        Some(v) => {
-            data.push(1);
-            data.push(v as u8);
-        }
-    }
-
-    data
-}
-
-fn build_manage_allowlist_data(action: u8, address: &Pubkey) -> Vec<u8> {
-    let disc = anchor_discriminator("global:manage_allowlist");
-    let mut data = Vec::new();
-    data.extend_from_slice(&disc);
-    data.push(action); // 0 = Add, 1 = Remove
-    data.extend_from_slice(address.as_ref());
-    data
 }
 
 // ── Account Data Readers ──

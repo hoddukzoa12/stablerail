@@ -174,3 +174,34 @@ pub struct MemberRemoved {
     /// Unix timestamp
     pub timestamp: i64,
 }
+
+// ═══════════════════════════════════════════
+//  Settlement Context Events
+// ═══════════════════════════════════════════
+
+/// Emitted when a settlement is executed via `execute_settlement`.
+#[event]
+pub struct SettlementExecuted {
+    /// Settlement account pubkey
+    pub settlement: Pubkey,
+    /// Pool account pubkey
+    pub pool: Pubkey,
+    /// Policy account pubkey
+    pub policy: Pubkey,
+    /// Executor (institutional operator) pubkey
+    pub executor: Pubkey,
+    /// Mint of the token sent in
+    pub token_in: Pubkey,
+    /// Mint of the token received
+    pub token_out: Pubkey,
+    /// Amount deposited (Q64.64 raw)
+    pub amount_in: i128,
+    /// Amount withdrawn (Q64.64 raw)
+    pub amount_out: i128,
+    /// Execution price (Q64.64 raw)
+    pub price: i128,
+    /// Audit entry action hash (SHA256 of settlement fields)
+    pub action_hash: [u8; 32],
+    /// Unix timestamp
+    pub timestamp: i64,
+}

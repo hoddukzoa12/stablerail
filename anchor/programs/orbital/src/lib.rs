@@ -74,8 +74,8 @@ pub mod orbital {
     //  Settlement Context — Institutional Settlement
     // ═══════════════════════════════════════════
 
-    pub fn execute_settlement(
-        ctx: Context<ExecuteSettlement>,
+    pub fn execute_settlement<'info>(
+        ctx: Context<'_, '_, 'info, 'info, ExecuteSettlement<'info>>,
         params: ExecuteSettlementParams,
     ) -> Result<()> {
         instructions::execute_settlement::handler(ctx, params)
