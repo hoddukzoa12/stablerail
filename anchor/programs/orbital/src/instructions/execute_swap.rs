@@ -55,6 +55,10 @@ pub fn handler<'info>(
 
     // ── Early validation (save CU on bad inputs) ──
     require!(pool.is_active, OrbitalError::PoolNotActive);
+    require!(
+        token_in < pool.n_assets as usize && token_out < pool.n_assets as usize,
+        OrbitalError::InvalidTokenIndex
+    );
 
     let remaining = &ctx.remaining_accounts;
     require!(remaining.len() == 4, OrbitalError::InvalidRemainingAccounts);
@@ -157,7 +161,7 @@ pub fn handler<'info>(
         params.token_out_index,
         params.amount_in,
         amount_out_u64,
-        result.fee.raw,
+        result.fee,
         result.slippage_bps
     );
 

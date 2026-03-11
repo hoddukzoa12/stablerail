@@ -1,12 +1,12 @@
 //! Swap Execution — Domain Logic
 //!
-//! Implements the on-chain portion of the swap flow:
-//!   1. SDK computes expected_amount_out off-chain (torus invariant + Newton)
-//!   2. This module verifies and applies the trade on-chain
+//! Implements the on-chain swap flow:
+//!   1. Handler computes exact amount_out on-chain (analytical solver)
+//!   2. This module validates inputs, applies the trade to reserves
 //!   3. Post-swap: sphere invariant check, slippage enforcement, cache update
 //!
-//! The on-chain program trusts the off-chain amount_out only if the
-//! sphere invariant holds after the trade is applied.
+//! The handler recomputes amount_out via `compute_amount_out_analytical()`
+//! to preserve full Q64.64 precision (avoids u64 truncation drift).
 
 use anchor_lang::prelude::*;
 
