@@ -137,6 +137,8 @@ pub struct PolicyCreated {
 pub struct PolicyUpdated {
     /// Policy account pubkey
     pub policy: Pubkey,
+    /// Authority who updated the policy
+    pub authority: Pubkey,
     /// Updated max trade amount (Q64.64 raw), None if unchanged
     pub max_trade_amount: Option<i128>,
     /// Updated max daily volume (Q64.64 raw), None if unchanged

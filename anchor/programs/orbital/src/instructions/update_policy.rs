@@ -49,6 +49,7 @@ pub fn handler(ctx: Context<UpdatePolicy>, params: UpdatePolicyParams) -> Result
 
     emit!(PolicyUpdated {
         policy: policy.key(),
+        authority: ctx.accounts.authority.key(),
         max_trade_amount: params.max_trade_amount.map(|_| policy.max_trade_amount.raw),
         max_daily_volume: params.max_daily_volume.map(|_| policy.max_daily_volume.raw),
         is_active: params.is_active,

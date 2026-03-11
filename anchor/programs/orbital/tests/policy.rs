@@ -28,6 +28,7 @@ const FRAC_BITS: u32 = 64;
 const ERROR_UNAUTHORIZED: u32 = 6021;
 const ERROR_ALLOWLIST_FULL: u32 = 6024;
 const ERROR_ALREADY_IN_ALLOWLIST: u32 = 6025;
+const ERROR_NOT_IN_ALLOWLIST: u32 = 6026;
 const ERROR_NO_FIELDS_TO_UPDATE: u32 = 6036;
 
 // ── Policy-Specific PDA Derivation ──
@@ -607,7 +608,35 @@ fn test_manage_allowlist_rejects_non_authority() {
 }
 
 // ══════════════════════════════════════════════
-// Test 9: update_policy rejects all-None params
+// Test 9: allowlist rejects removing non-existent member
+// ══════════════════════════════════════════════
+
+#[test]
+fn test_allowlist_rejects_remove_non_existent() {
+    let mut env = setup_pool();
+    let auth = env.authority.insecure_clone();
+
+    let policy_pda = send_create_policy(&mut env, &auth, 1_000_000, 10_000_000)
+        .expect("create_policy should succeed");
+
+    // Add one member first so the allowlist account is initialized
+    let member_a = Pubkey::new_unique();
+    send_manage_allowlist(&mut env, &auth, &policy_pda, 0, &member_a)
+        .expect("add member should succeed");
+
+    // Try to remove a member that was never added
+    let non_member = Pubkey::new_unique();
+    let result = send_manage_allowlist(&mut env, &auth, &policy_pda, 1, &non_member);
+    let err = result.unwrap_err();
+    assert_eq!(
+        extract_anchor_error_code(&err),
+        Some(ERROR_NOT_IN_ALLOWLIST),
+        "expected NotInAllowlist (6026), got: {err}"
+    );
+}
+
+// ══════════════════════════════════════════════
+// Test 10: update_policy rejects all-None params
 // ══════════════════════════════════════════════
 
 #[test]
