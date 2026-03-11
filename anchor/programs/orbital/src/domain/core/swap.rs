@@ -88,8 +88,8 @@ pub fn compute_slippage_bps(
 
 /// Execute a swap on the pool.
 ///
-/// The off-chain SDK computes `expected_amount_out` via the torus invariant
-/// and Newton solver. This function:
+/// The handler computes `expected_amount_out` on-chain via the analytical
+/// solver (full Q64.64 precision). This function:
 ///   1. Validates inputs
 ///   2. Deducts fee from amount_in
 ///   3. Enforces slippage (expected_amount_out >= min_amount_out)
@@ -199,20 +199,10 @@ pub fn execute_swap(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::core::pool::initialize_pool_reserves;
-    use crate::domain::core::test_helpers::{make_pool, unique_pubkeys};
+    use crate::domain::core::test_helpers::init_pool;
     use crate::math::newton::compute_amount_out_analytical;
 
     // ── Test helpers ──
-
-    fn init_pool(n: u8, deposit: i64) -> PoolState {
-        let mut pool = make_pool(n);
-        let mints = unique_pubkeys(n as usize);
-        let vaults = unique_pubkeys(n as usize);
-        let deposit_fp = FixedPoint::from_int(deposit);
-        initialize_pool_reserves(&mut pool, deposit_fp, &mints, &vaults).unwrap();
-        pool
-    }
 
     /// Compute valid amount_out using the analytical solver (any n, any reserve state).
     fn compute_valid_amount_out(pool: &PoolState, token_in: usize, token_out: usize, net_amount_in: FixedPoint) -> FixedPoint {
