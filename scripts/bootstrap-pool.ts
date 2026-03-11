@@ -343,8 +343,13 @@ async function main() {
       } else {
         await callManageAllowlist(program, deployer, policyPda, allowlistPda);
       }
-    } catch {
-      await callManageAllowlist(program, deployer, policyPda, allowlistPda);
+    } catch (err) {
+      console.warn("  Could not fetch allowlist state, retrying add:", err);
+      try {
+        await callManageAllowlist(program, deployer, policyPda, allowlistPda);
+      } catch {
+        console.log("  Deployer likely already in allowlist — continuing");
+      }
     }
   } else {
     await callManageAllowlist(program, deployer, policyPda, allowlistPda);
