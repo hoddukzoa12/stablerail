@@ -63,6 +63,13 @@ pub fn add_liquidity_to_pool(
     }
 
     // 2. Add deposits to reserves and accumulate liquidity sum
+    //
+    // WARNING: MVP uses sum-of-deposits model (liquidity = Σ deposits).
+    // This allows fee-free rebalance via asymmetric deposit + proportional
+    // withdrawal during depeg events. Safe for stablecoin pools where all
+    // tokens ≈ $1, but must be replaced for production.
+    // Post-MVP fix: reserve-ratio based shares or radius-delta model.
+    // See: https://github.com/hoddukzoa12/stablerail/issues/36
     let mut liquidity = FixedPoint::zero();
     for i in 0..n {
         pool.reserves[i] = pool.reserves[i].checked_add(deposits[i])?;
