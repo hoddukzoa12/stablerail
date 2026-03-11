@@ -7,9 +7,9 @@
 //! 1. **Analytical** — exact O(1) closed-form for single-sphere swaps
 //! 2. **Newton iteration** — general numerical solver with bisection fallback
 //!
-//! Architecture: off-chain computation, on-chain verification.
-//! The on-chain program receives `expected_amount_out` and verifies
-//! the invariant holds after applying the trade.
+//! The analytical solver is called on-chain by the swap handler to compute
+//! the exact Q64.64 `amount_out`, preserving full precision for invariant
+//! compliance. The Newton solver is available for future tick-based swaps.
 
 use anchor_lang::prelude::*;
 

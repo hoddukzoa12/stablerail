@@ -26,7 +26,10 @@ pub mod orbital {
         instructions::initialize_pool::handler(ctx, params)
     }
 
-    pub fn execute_swap(ctx: Context<ExecuteSwap>, params: SwapParams) -> Result<()> {
+    pub fn execute_swap<'info>(
+        ctx: Context<'_, '_, 'info, 'info, ExecuteSwap<'info>>,
+        params: SwapParams,
+    ) -> Result<()> {
         instructions::execute_swap::handler(ctx, params)
     }
 
