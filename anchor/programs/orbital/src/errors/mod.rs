@@ -115,4 +115,7 @@ pub enum OrbitalError {
 
     #[msg("Withdrawal too small: all token returns round to zero")]
     WithdrawalTooSmall,
+
+    #[msg("Swap output rounds to zero after truncation")]
+    SwapOutputTooSmall,
 }

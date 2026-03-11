@@ -122,6 +122,7 @@ pub fn handler<'info>(
 
     // ── SPL transfer OUT: vault_out → user_ata_out (pool PDA signs) ──
     let amount_out_u64 = result.amount_out.to_u64()?;
+    require!(amount_out_u64 > 0, OrbitalError::SwapOutputTooSmall);
     let authority_key = pool.authority;
     let pool_bump = pool.bump;
     let pool_seeds: &[&[u8]] = &[b"pool", authority_key.as_ref(), &[pool_bump]];
