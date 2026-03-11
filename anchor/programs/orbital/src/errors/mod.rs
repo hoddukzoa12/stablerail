@@ -112,4 +112,7 @@ pub enum OrbitalError {
 
     #[msg("Vault PDA address does not match expected derivation")]
     InvalidVaultAddress,
+
+    #[msg("Withdrawal too small: all token returns round to zero")]
+    WithdrawalTooSmall,
 }

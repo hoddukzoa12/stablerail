@@ -53,6 +53,64 @@ pub fn compute_radius_from_deposit(deposit: FixedPoint, n: u8) -> Result<FixedPo
     numerator.checked_div(denominator)
 }
 
+/// Compute sphere radius from arbitrary reserve vector.
+///
+/// Solves the sphere invariant `Σ(r - xᵢ)² = r²` for r, which yields
+/// the quadratic `(n-1)·r² - 2r·Σxᵢ + Σxᵢ² = 0`. By the quadratic
+/// formula (taking the larger root):
+///
+///   r = (Σxᵢ + √((Σxᵢ)² - (n-1)·Σxᵢ²)) / (n-1)
+///
+/// This is the general form of [`compute_radius_from_deposit`].
+/// At equal reserves xᵢ = D, it produces the same result: r = D·√n/(√n-1).
+///
+/// Returns error if the discriminant is negative (reserves too imbalanced
+/// for a valid sphere to exist).
+pub fn compute_radius_from_reserves(
+    reserves: &[FixedPoint; MAX_ASSETS],
+    n: u8,
+) -> Result<FixedPoint> {
+    require!(
+        n >= 2 && (n as usize) <= MAX_ASSETS,
+        OrbitalError::InvalidAssetCount
+    );
+
+    let n_usize = n as usize;
+    let n_minus_1 = FixedPoint::from_int((n as i64) - 1);
+
+    let mut sum_x = FixedPoint::zero();
+    let mut sum_x_sq = FixedPoint::zero();
+    for i in 0..n_usize {
+        require!(reserves[i].raw >= 0, OrbitalError::InvalidLiquidityAmount);
+        sum_x = sum_x.checked_add(reserves[i])?;
+        sum_x_sq = sum_x_sq.checked_add(reserves[i].squared()?)?;
+    }
+
+    // discriminant = (Σxᵢ)² - (n-1)·Σxᵢ²
+    let sum_x_squared = sum_x.squared()?;
+    let scaled_sum_sq = n_minus_1.checked_mul(sum_x_sq)?;
+    let discriminant = sum_x_squared.checked_sub(scaled_sum_sq)?;
+
+    require!(discriminant.raw >= 0, OrbitalError::InvariantViolation);
+
+    let sqrt_disc = discriminant.sqrt()?;
+    let numerator = sum_x.checked_add(sqrt_disc)?;
+    numerator.checked_div(n_minus_1)
+}
+
+/// Recompute sphere radius from current reserves and update pool state.
+///
+/// Shared by `add_liquidity_to_pool` and `remove_liquidity_from_pool` to
+/// avoid duplicating the radius→sphere assignment pattern.
+pub fn recompute_sphere(pool: &mut PoolState) -> Result<FixedPoint> {
+    let new_radius = compute_radius_from_reserves(&pool.reserves, pool.n_assets)?;
+    pool.sphere = Sphere {
+        radius: new_radius,
+        n: pool.n_assets,
+    };
+    Ok(new_radius)
+}
+
 /// Verify sphere invariant: ||r⃗ - x⃗||² ≈ r² (O(1) path).
 ///
 /// Constructs a transient ReserveState for O(1) distance computation,
@@ -99,8 +157,9 @@ pub fn derive_vault_pda(
 ///   2. Compute sphere radius: r = D·√n/(√n-1)
 ///   3. Set all active reserves to deposit amount
 ///   4. Store token mints and vault addresses
-///   5. Recompute alpha_cache and w_norm_sq_cache
-///   6. Verify sphere invariant (post-condition)
+///   5. Seed total_interior_liquidity = deposit × n (proportional withdrawal denominator)
+///   6. Recompute alpha_cache and w_norm_sq_cache
+///   7. Verify sphere invariant (post-condition)
 ///
 /// Precondition: `pool.n_assets`, `pool.fee_rate_bps`, `pool.bump`,
 /// `pool.authority` already set by the instruction handler.
@@ -157,10 +216,18 @@ pub fn initialize_pool_reserves(
         pool.token_vaults[i] = token_vaults[i];
     }
 
-    // 5. Update caches
+    // 5. Seed total_interior_liquidity with initial deposit sum.
+    //    This serves as the denominator for proportional withdrawals.
+    //    The authority's initial deposit is "implicit liquidity" (no Position PDA).
+    //    WARNING: These tokens are permanently locked — no withdrawal path exists.
+    //    This is analogous to Uniswap V2's MINIMUM_LIQUIDITY mechanism.
+    let n_fp = FixedPoint::from_int(n as i64);
+    pool.total_interior_liquidity = per_asset_deposit.checked_mul(n_fp)?;
+
+    // 6. Update caches
     update_caches(pool)?;
 
-    // 6. Post-condition: invariant must hold
+    // 7. Post-condition: invariant must hold
     verify_invariant(pool)?;
 
     Ok(())
@@ -169,22 +236,9 @@ pub fn initialize_pool_reserves(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::core::test_helpers::{make_pool, unique_pubkeys};
-
-    /// Generous epsilon for sqrt-derived comparisons (~2^-22)
-    fn sqrt_epsilon() -> FixedPoint {
-        FixedPoint::from_raw(1i128 << 42)
-    }
-
-    /// Initialize a pool with equal deposits and return it.
-    fn init_pool(n: u8, deposit: i64) -> PoolState {
-        let mut pool = make_pool(n);
-        let deposit_fp = FixedPoint::from_int(deposit);
-        let mints = unique_pubkeys(n as usize);
-        let vaults = unique_pubkeys(n as usize);
-        initialize_pool_reserves(&mut pool, deposit_fp, &mints, &vaults).unwrap();
-        pool
-    }
+    use crate::domain::core::test_helpers::{
+        init_pool, make_pool, sqrt_epsilon, unique_pubkeys,
+    };
 
     // ══════════════════════════════════════════════
     // compute_radius_from_deposit tests
@@ -394,6 +448,65 @@ mod tests {
         // init_pool generates unique mints via unique_pubkeys;
         // reaching here without error confirms acceptance.
         assert!(pool.sphere.radius.is_positive());
+    }
+
+    // ══════════════════════════════════════════════
+    // derive_vault_pda test
+    // ══════════════════════════════════════════════
+
+    // ══════════════════════════════════════════════
+    // compute_radius_from_reserves tests
+    // ══════════════════════════════════════════════
+
+    #[test]
+    fn test_compute_radius_from_reserves_matches_equal_deposit() {
+        // For equal reserves, compute_radius_from_reserves should match compute_radius_from_deposit
+        let deposit = FixedPoint::from_int(100);
+        for n in [2u8, 3, 5, 8] {
+            let r_deposit = compute_radius_from_deposit(deposit, n).unwrap();
+
+            let mut reserves = [FixedPoint::zero(); MAX_ASSETS];
+            for i in 0..(n as usize) {
+                reserves[i] = deposit;
+            }
+            let r_reserves = compute_radius_from_reserves(&reserves, n).unwrap();
+
+            assert!(
+                r_deposit.approx_eq(r_reserves, sqrt_epsilon()),
+                "n={}: from_deposit ({:?}) should ≈ from_reserves ({:?})",
+                n,
+                r_deposit,
+                r_reserves
+            );
+        }
+    }
+
+    #[test]
+    fn test_compute_radius_from_reserves_asymmetric() {
+        // Slightly asymmetric reserves should still produce a valid radius
+        let mut reserves = [FixedPoint::zero(); MAX_ASSETS];
+        reserves[0] = FixedPoint::from_int(90);
+        reserves[1] = FixedPoint::from_int(100);
+        reserves[2] = FixedPoint::from_int(110);
+
+        let r = compute_radius_from_reserves(&reserves, 3).unwrap();
+        assert!(r.is_positive(), "radius should be positive");
+
+        // Verify invariant: Σ(r - xᵢ)² = r²
+        let sphere = Sphere { radius: r, n: 3 };
+        let active = &reserves[..3];
+        // Use generous tolerance for asymmetric case
+        assert!(
+            sphere.check_invariant(active).is_ok(),
+            "invariant should hold for asymmetric reserves"
+        );
+    }
+
+    #[test]
+    fn test_compute_radius_from_reserves_rejects_invalid_n() {
+        let reserves = [FixedPoint::from_int(100); MAX_ASSETS];
+        assert!(compute_radius_from_reserves(&reserves, 1).is_err());
+        assert!(compute_radius_from_reserves(&reserves, 9).is_err());
     }
 
     // ══════════════════════════════════════════════
