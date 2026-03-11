@@ -2,6 +2,7 @@ use anchor_lang::prelude::*;
 
 use crate::state::PolicyState;
 use crate::errors::OrbitalError;
+use crate::events::PolicyUpdated;
 use crate::math::FixedPoint;
 
 #[derive(AnchorSerialize, AnchorDeserialize)]
@@ -24,6 +25,13 @@ pub struct UpdatePolicy<'info> {
 }
 
 pub fn handler(ctx: Context<UpdatePolicy>, params: UpdatePolicyParams) -> Result<()> {
+    require!(
+        params.max_trade_amount.is_some()
+            || params.max_daily_volume.is_some()
+            || params.is_active.is_some(),
+        OrbitalError::NoFieldsToUpdate
+    );
+
     let policy = &mut ctx.accounts.policy;
 
     if let Some(max_trade) = params.max_trade_amount {
@@ -38,6 +46,15 @@ pub fn handler(ctx: Context<UpdatePolicy>, params: UpdatePolicyParams) -> Result
 
     let clock = Clock::get()?;
     policy.updated_at = clock.unix_timestamp;
+
+    emit!(PolicyUpdated {
+        policy: policy.key(),
+        authority: ctx.accounts.authority.key(),
+        max_trade_amount: params.max_trade_amount.map(|_| policy.max_trade_amount.raw),
+        max_daily_volume: params.max_daily_volume.map(|_| policy.max_daily_volume.raw),
+        is_active: params.is_active,
+        timestamp: clock.unix_timestamp,
+    });
 
     msg!("Policy updated");
     Ok(())
