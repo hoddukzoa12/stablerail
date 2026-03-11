@@ -121,4 +121,7 @@ pub enum OrbitalError {
 
     #[msg("No fields to update")]
     NoFieldsToUpdate,
+
+    #[msg("Daily volume limit exceeded")]
+    DailyVolumeLimitExceeded,
 }
