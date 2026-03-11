@@ -18,6 +18,8 @@
  */
 
 import * as anchor from "@coral-xyz/anchor";
+// @ts-ignore — bn.js has no type declarations in this isolated scripts package
+import BN from "bn.js";
 import {
   Connection,
   Keypair,
@@ -46,10 +48,10 @@ const DEVNET_RPC = "https://api.devnet.solana.com";
 const N_ASSETS = 3;
 const FEE_RATE_BPS = 30;
 const DECIMALS = 6;
-// 1000 tokens at 6 decimals
-const INITIAL_DEPOSIT_PER_ASSET = BigInt(1_000_000_000);
+// 100 tokens at 6 decimals (Q64.64 safe range for checked_mul)
+const INITIAL_DEPOSIT_PER_ASSET = BigInt(100_000_000);
 // 2x deposit for swap buffer
-const MINT_AMOUNT_PER_ASSET = BigInt(2_000_000_000);
+const MINT_AMOUNT_PER_ASSET = BigInt(200_000_000);
 // Policy: 100K tokens per trade, 1M tokens/day
 const MAX_TRADE_AMOUNT = BigInt(100_000_000_000);
 const MAX_DAILY_VOLUME = BigInt(1_000_000_000_000);
@@ -282,7 +284,7 @@ async function main() {
       .initializePool({
         nAssets: N_ASSETS,
         feeRateBps: FEE_RATE_BPS,
-        initialDepositPerAsset: new anchor.BN(
+        initialDepositPerAsset: new BN(
           INITIAL_DEPOSIT_PER_ASSET.toString()
         ),
         tokenMints: tokenMintsArg,
@@ -308,8 +310,8 @@ async function main() {
   } else {
     const tx = await program.methods
       .createPolicy({
-        maxTradeAmount: new anchor.BN(MAX_TRADE_AMOUNT.toString()),
-        maxDailyVolume: new anchor.BN(MAX_DAILY_VOLUME.toString()),
+        maxTradeAmount: new BN(MAX_TRADE_AMOUNT.toString()),
+        maxDailyVolume: new BN(MAX_DAILY_VOLUME.toString()),
       })
       .accounts({
         authority: deployer.publicKey,
