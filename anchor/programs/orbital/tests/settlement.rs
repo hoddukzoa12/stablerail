@@ -24,11 +24,6 @@ use solana_sdk::{
     transaction::Transaction,
 };
 
-// Import orbital crate for exact Q64.64 math (matches on-chain computation)
-use orbital::domain::core::{compute_fee, compute_radius_from_deposit};
-use orbital::math::newton::compute_amount_out_analytical;
-use orbital::math::{FixedPoint, Sphere};
-
 // ── Anchor error codes (6000 + OrbitalError variant index) ──
 const ERROR_UNAUTHORIZED: u32 = 6021;
 const ERROR_POLICY_LIMIT_EXCEEDED: u32 = 6023;
@@ -36,17 +31,6 @@ const ERROR_SETTLEMENT_POLICY_VIOLATION: u32 = 6027;
 const ERROR_DAILY_VOLUME_LIMIT_EXCEEDED: u32 = 6037;
 
 // ── Settlement-Specific PDA Derivation ──
-
-fn derive_policy_pda(pool: &Pubkey, authority: &Pubkey) -> (Pubkey, u8) {
-    Pubkey::find_program_address(
-        &[b"policy", pool.as_ref(), authority.as_ref()],
-        &PROGRAM_ID,
-    )
-}
-
-fn derive_allowlist_pda(policy: &Pubkey) -> (Pubkey, u8) {
-    Pubkey::find_program_address(&[b"allowlist", policy.as_ref()], &PROGRAM_ID)
-}
 
 fn derive_settlement_pda(pool: &Pubkey, executor: &Pubkey, nonce: u64) -> (Pubkey, u8) {
     Pubkey::find_program_address(
@@ -64,58 +48,7 @@ fn derive_audit_pda(settlement: &Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[b"audit", settlement.as_ref()], &PROGRAM_ID)
 }
 
-// ── Instruction Data Builders ──
-
-fn build_create_policy_data(max_trade_amount: u64, max_daily_volume: u64) -> Vec<u8> {
-    let disc = anchor_discriminator("global:create_policy");
-    let mut data = Vec::new();
-    data.extend_from_slice(&disc);
-    data.extend_from_slice(&max_trade_amount.to_le_bytes());
-    data.extend_from_slice(&max_daily_volume.to_le_bytes());
-    data
-}
-
-fn build_manage_allowlist_data(action: u8, address: &Pubkey) -> Vec<u8> {
-    let disc = anchor_discriminator("global:manage_allowlist");
-    let mut data = Vec::new();
-    data.extend_from_slice(&disc);
-    data.push(action); // 0 = Add, 1 = Remove
-    data.extend_from_slice(address.as_ref());
-    data
-}
-
-fn build_update_policy_data(
-    max_trade_amount: Option<u64>,
-    max_daily_volume: Option<u64>,
-    is_active: Option<bool>,
-) -> Vec<u8> {
-    let disc = anchor_discriminator("global:update_policy");
-    let mut data = Vec::new();
-    data.extend_from_slice(&disc);
-
-    match max_trade_amount {
-        None => data.push(0),
-        Some(v) => {
-            data.push(1);
-            data.extend_from_slice(&v.to_le_bytes());
-        }
-    }
-    match max_daily_volume {
-        None => data.push(0),
-        Some(v) => {
-            data.push(1);
-            data.extend_from_slice(&v.to_le_bytes());
-        }
-    }
-    match is_active {
-        None => data.push(0),
-        Some(v) => {
-            data.push(1);
-            data.push(v as u8);
-        }
-    }
-    data
-}
+// ── Instruction Data Builders (settlement-specific) ──
 
 fn build_execute_settlement_data(
     token_in_index: u8,
@@ -133,34 +66,6 @@ fn build_execute_settlement_data(
     data.extend_from_slice(&min_amount_out.to_le_bytes());
     data.extend_from_slice(&nonce.to_le_bytes());
     data
-}
-
-// ── Expected Amount Out (same Q64.64 math as on-chain) ──
-
-fn compute_valid_expected_out(
-    n_assets: u8,
-    deposit_per_asset: u64,
-    fee_rate_bps: u16,
-    token_in: usize,
-    token_out: usize,
-    amount_in: u64,
-) -> u64 {
-    let per_asset = FixedPoint::checked_from_u64(deposit_per_asset).unwrap();
-    let radius = compute_radius_from_deposit(per_asset, n_assets).unwrap();
-    let sphere = Sphere {
-        radius,
-        n: n_assets,
-    };
-    let reserves: Vec<FixedPoint> = (0..n_assets as usize)
-        .map(|_| per_asset)
-        .collect();
-
-    let amount_in_fp = FixedPoint::checked_from_u64(amount_in).unwrap();
-    let fee = compute_fee(amount_in_fp, fee_rate_bps).unwrap();
-    let net_in = amount_in_fp.checked_sub(fee).unwrap();
-    let expected_out_fp =
-        compute_amount_out_analytical(&sphere, &reserves, token_in, token_out, net_in).unwrap();
-    expected_out_fp.to_u64().unwrap()
 }
 
 // ── Test Scaffolding ──
@@ -353,8 +258,8 @@ fn add_to_allowlist(env: &mut SettlementTestEnv, member: &Pubkey) {
         .expect("add_to_allowlist should succeed");
 }
 
-/// Create an executor with funded ATAs and add to allowlist.
-fn setup_executor(env: &mut SettlementTestEnv, fund_amount: u64) -> (Keypair, Vec<Pubkey>) {
+/// Create a funded executor with ATAs for all pool tokens (not yet on the allowlist).
+fn create_funded_executor(env: &mut SettlementTestEnv, fund_amount: u64) -> (Keypair, Vec<Pubkey>) {
     let executor = Keypair::new();
     env.svm
         .airdrop(&executor.pubkey(), 5_000_000_000)
@@ -373,9 +278,14 @@ fn setup_executor(env: &mut SettlementTestEnv, fund_amount: u64) -> (Keypair, Ve
         executor_atas.push(ata);
     }
 
-    add_to_allowlist(env, &executor.pubkey());
-
     (executor, executor_atas)
+}
+
+/// Create an executor with funded ATAs and add to allowlist.
+fn setup_executor(env: &mut SettlementTestEnv, fund_amount: u64) -> (Keypair, Vec<Pubkey>) {
+    let (executor, atas) = create_funded_executor(env, fund_amount);
+    add_to_allowlist(env, &executor.pubkey());
+    (executor, atas)
 }
 
 /// Send execute_settlement instruction. Returns Ok(settlement_pda) or Err.
@@ -532,23 +442,7 @@ fn test_settlement_rejects_unauthorized() {
     let mut env = setup_settlement_env(1_000_000, 500_000, 10_000_000);
 
     // Create executor but do NOT add to allowlist
-    let executor = Keypair::new();
-    env.svm
-        .airdrop(&executor.pubkey(), 5_000_000_000)
-        .unwrap();
-
-    let mut executor_atas = Vec::new();
-    for mint_kp in &env.mints {
-        let ata = create_ata(&mut env.svm, &env.authority, &mint_kp.pubkey(), &executor.pubkey());
-        mint_to(
-            &mut env.svm,
-            &env.authority,
-            &mint_kp.pubkey(),
-            &ata,
-            100_000,
-        );
-        executor_atas.push(ata);
-    }
+    let (executor, executor_atas) = create_funded_executor(&mut env, 100_000);
 
     let result = send_settlement(
         &mut env, &executor, &executor_atas, 0, 1, 10_000, 1, 0,
@@ -599,22 +493,13 @@ fn test_settlement_creates_audit_entry() {
     .expect("settlement should succeed");
 
     // Verify audit entry exists and has non-zero action_hash
+    // (read_audit_action_hash panics if the account is absent)
     let (audit_pda, _) = derive_audit_pda(&settlement_pda);
     let action_hash = read_audit_action_hash(&env.svm, &audit_pda);
     assert_ne!(
         action_hash,
         [0u8; 32],
         "action_hash should not be all zeros"
-    );
-
-    // Verify audit entry account exists
-    let audit_acc = env
-        .svm
-        .get_account(&audit_pda)
-        .expect("audit account should exist");
-    assert!(
-        !audit_acc.data.is_empty(),
-        "audit entry should have data"
     );
 }
 

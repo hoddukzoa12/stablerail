@@ -85,7 +85,6 @@ pub fn handler<'info>(
     params: ExecuteSettlementParams,
 ) -> Result<()> {
     let pool = &ctx.accounts.pool;
-    let policy = &ctx.accounts.policy;
     let allowlist = &ctx.accounts.allowlist;
     let executor = &ctx.accounts.executor;
 
@@ -101,21 +100,20 @@ pub fn handler<'info>(
     );
     require!(params.amount > 0, OrbitalError::NegativeTradeAmount);
 
-    // ── Policy checks ──
+    // ── Policy checks + daily volume tracking ──
     require!(
         allowlist.contains(&executor.key()),
         OrbitalError::Unauthorized
     );
 
     let amount = FixedPoint::checked_from_u64(params.amount)?;
+    let clock = Clock::get()?;
+    let policy = &mut ctx.accounts.policy;
+
     require!(
         amount.raw <= policy.max_trade_amount.raw,
         OrbitalError::PolicyLimitExceeded
     );
-
-    // ── Daily volume tracking ──
-    let clock = Clock::get()?;
-    let policy = &mut ctx.accounts.policy;
 
     const SECONDS_PER_DAY: i64 = 86_400;
     if clock.unix_timestamp - policy.last_reset_timestamp >= SECONDS_PER_DAY {
@@ -134,7 +132,6 @@ pub fn handler<'info>(
     let remaining = &ctx.remaining_accounts;
     require!(remaining.len() == 4, OrbitalError::InvalidRemainingAccounts);
 
-    let pool = &ctx.accounts.pool;
     require!(
         *remaining[0].key == pool.token_vaults[token_in],
         OrbitalError::InvalidVaultAddress

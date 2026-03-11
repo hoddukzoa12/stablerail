@@ -232,3 +232,105 @@ pub fn extract_anchor_error_code(err: &str) -> Option<u32> {
     let end = start + err[start..].find(')')?;
     err[start..end].parse().ok()
 }
+
+// ── Policy / Settlement Shared PDA Derivation ──
+
+pub fn derive_policy_pda(pool: &Pubkey, authority: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(
+        &[b"policy", pool.as_ref(), authority.as_ref()],
+        &PROGRAM_ID,
+    )
+}
+
+pub fn derive_allowlist_pda(policy: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[b"allowlist", policy.as_ref()], &PROGRAM_ID)
+}
+
+// ── Policy / Settlement Shared Instruction Data Builders ──
+
+pub fn build_create_policy_data(max_trade_amount: u64, max_daily_volume: u64) -> Vec<u8> {
+    let disc = anchor_discriminator("global:create_policy");
+    let mut data = Vec::new();
+    data.extend_from_slice(&disc);
+    data.extend_from_slice(&max_trade_amount.to_le_bytes());
+    data.extend_from_slice(&max_daily_volume.to_le_bytes());
+    data
+}
+
+pub fn build_update_policy_data(
+    max_trade_amount: Option<u64>,
+    max_daily_volume: Option<u64>,
+    is_active: Option<bool>,
+) -> Vec<u8> {
+    let disc = anchor_discriminator("global:update_policy");
+    let mut data = Vec::new();
+    data.extend_from_slice(&disc);
+
+    match max_trade_amount {
+        None => data.push(0),
+        Some(v) => {
+            data.push(1);
+            data.extend_from_slice(&v.to_le_bytes());
+        }
+    }
+    match max_daily_volume {
+        None => data.push(0),
+        Some(v) => {
+            data.push(1);
+            data.extend_from_slice(&v.to_le_bytes());
+        }
+    }
+    match is_active {
+        None => data.push(0),
+        Some(v) => {
+            data.push(1);
+            data.push(v as u8);
+        }
+    }
+    data
+}
+
+pub fn build_manage_allowlist_data(action: u8, address: &Pubkey) -> Vec<u8> {
+    let disc = anchor_discriminator("global:manage_allowlist");
+    let mut data = Vec::new();
+    data.extend_from_slice(&disc);
+    data.push(action); // 0 = Add, 1 = Remove
+    data.extend_from_slice(address.as_ref());
+    data
+}
+
+// ── Shared Math Helper ──
+
+/// Compute the valid expected_amount_out using the orbital crate's analytical solver.
+///
+/// Uses the exact same Q64.64 math as the on-chain program to guarantee
+/// the sphere invariant holds after the swap.
+pub fn compute_valid_expected_out(
+    n_assets: u8,
+    deposit_per_asset: u64,
+    fee_rate_bps: u16,
+    token_in: usize,
+    token_out: usize,
+    amount_in: u64,
+) -> u64 {
+    use orbital::domain::core::{compute_fee, compute_radius_from_deposit};
+    use orbital::math::newton::compute_amount_out_analytical;
+    use orbital::math::{FixedPoint, Sphere};
+
+    let per_asset = FixedPoint::checked_from_u64(deposit_per_asset).unwrap();
+    let radius = compute_radius_from_deposit(per_asset, n_assets).unwrap();
+    let sphere = Sphere {
+        radius,
+        n: n_assets,
+    };
+    let reserves: Vec<FixedPoint> = (0..n_assets as usize)
+        .map(|_| per_asset)
+        .collect();
+
+    let amount_in_fp = FixedPoint::checked_from_u64(amount_in).unwrap();
+    let fee = compute_fee(amount_in_fp, fee_rate_bps).unwrap();
+    let net_in = amount_in_fp.checked_sub(fee).unwrap();
+    let expected_out_fp =
+        compute_amount_out_analytical(&sphere, &reserves, token_in, token_out, net_in).unwrap();
+    expected_out_fp.to_u64().unwrap()
+}
