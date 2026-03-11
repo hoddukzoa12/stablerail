@@ -66,7 +66,9 @@ pub fn handler<'info>(
         OrbitalError::InvalidRemainingAccounts
     );
 
-    // Validate all deposit amounts are positive for active assets
+    // Validate all deposit amounts are positive for active assets.
+    // (Domain layer also validates; this early check avoids wasting CU on
+    //  SPL transfers that would ultimately be reverted.)
     for i in 0..n {
         require!(
             params.amounts[i] > 0,
@@ -74,14 +76,13 @@ pub fn handler<'info>(
         );
     }
 
-    // remaining_accounts named offsets
-    let vault_offset = 0; // [0..n)
-    let ata_offset = n; // [n..2n)
+    // remaining_accounts layout: [0..n) vaults, [n..2n) provider ATAs
+    let ata_offset = n;
 
     // Validate vault addresses match pool state
     for i in 0..n {
         require!(
-            *remaining[vault_offset + i].key == pool.token_vaults[i],
+            *remaining[i].key == pool.token_vaults[i],
             OrbitalError::InvalidVaultAddress
         );
     }
@@ -89,7 +90,7 @@ pub fn handler<'info>(
     // ── SPL token transfers: provider ATAs → pool vaults ──
     for i in 0..n {
         let ata_info = &remaining[ata_offset + i];
-        let vault_info = &remaining[vault_offset + i];
+        let vault_info = &remaining[i];
 
         token::transfer(
             CpiContext::new(

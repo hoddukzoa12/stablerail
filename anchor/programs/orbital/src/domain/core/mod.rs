@@ -4,7 +4,7 @@ pub mod swap;
 
 pub use pool::{
     compute_radius_from_deposit, compute_radius_from_reserves, derive_vault_pda,
-    initialize_pool_reserves, update_caches, verify_invariant,
+    initialize_pool_reserves, recompute_sphere, update_caches, verify_invariant,
 };
 pub use swap::{compute_fee, compute_slippage_bps, execute_swap, SwapResult};
 
@@ -46,5 +46,20 @@ pub(crate) mod test_helpers {
             position_count: 0,
             _reserved: [0u8; 112],
         }
+    }
+
+    /// Generous epsilon for sqrt-derived comparisons (~2^-22)
+    pub fn sqrt_epsilon() -> FixedPoint {
+        FixedPoint::from_raw(1i128 << 42)
+    }
+
+    /// Initialize a pool with equal deposits and return it.
+    pub fn init_pool(n: u8, deposit: i64) -> PoolState {
+        let mut pool = make_pool(n);
+        let deposit_fp = FixedPoint::from_int(deposit);
+        let mints = unique_pubkeys(n as usize);
+        let vaults = unique_pubkeys(n as usize);
+        super::initialize_pool_reserves(&mut pool, deposit_fp, &mints, &vaults).unwrap();
+        pool
     }
 }

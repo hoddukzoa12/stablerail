@@ -4,7 +4,7 @@ use anchor_spl::token::{self, Token};
 use crate::domain::liquidity::remove_liquidity_from_pool;
 use crate::errors::OrbitalError;
 use crate::events::LiquidityRemoved;
-use crate::math::{sphere::MAX_ASSETS, FixedPoint};
+use crate::math::FixedPoint;
 use crate::state::{PoolState, PositionState};
 
 #[derive(AnchorSerialize, AnchorDeserialize)]
@@ -44,7 +44,6 @@ pub struct RemoveLiquidity<'info> {
     pub position: Account<'info, PositionState>,
 
     pub token_program: Program<'info, Token>,
-    pub system_program: Program<'info, System>,
 }
 
 pub fn handler<'info>(
@@ -75,14 +74,13 @@ pub fn handler<'info>(
         OrbitalError::InvalidLiquidityAmount
     );
 
-    // remaining_accounts named offsets
-    let vault_offset = 0; // [0..n)
-    let ata_offset = n; // [n..2n)
+    // remaining_accounts layout: [0..n) vaults, [n..2n) provider ATAs
+    let ata_offset = n;
 
     // Validate vault addresses match pool state
     for i in 0..n {
         require!(
-            *remaining[vault_offset + i].key == pool.token_vaults[i],
+            *remaining[i].key == pool.token_vaults[i],
             OrbitalError::InvalidVaultAddress
         );
     }
@@ -101,7 +99,7 @@ pub fn handler<'info>(
         if result.return_amounts_u64[i] == 0 {
             continue; // skip zero transfers
         }
-        let vault_info = &remaining[vault_offset + i];
+        let vault_info = &remaining[i];
         let ata_info = &remaining[ata_offset + i];
 
         token::transfer(
@@ -131,16 +129,11 @@ pub fn handler<'info>(
     position.updated_at = clock.unix_timestamp;
 
     // ── Emit event ──
-    let mut amounts_u64 = [0u64; MAX_ASSETS];
-    for i in 0..n {
-        amounts_u64[i] = result.return_amounts_u64[i];
-    }
-
     emit!(LiquidityRemoved {
         pool: pool_key,
         provider: provider_key,
         position: position_key,
-        amounts: amounts_u64,
+        amounts: result.return_amounts_u64,
         liquidity_removed: remove_amount.raw,
         remaining_liquidity: position.liquidity.raw,
         new_radius: result.new_radius.raw,

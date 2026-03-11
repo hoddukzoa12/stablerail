@@ -98,6 +98,19 @@ pub fn compute_radius_from_reserves(
     numerator.checked_div(n_minus_1)
 }
 
+/// Recompute sphere radius from current reserves and update pool state.
+///
+/// Shared by `add_liquidity_to_pool` and `remove_liquidity_from_pool` to
+/// avoid duplicating the radius→sphere assignment pattern.
+pub fn recompute_sphere(pool: &mut PoolState) -> Result<FixedPoint> {
+    let new_radius = compute_radius_from_reserves(&pool.reserves, pool.n_assets)?;
+    pool.sphere = Sphere {
+        radius: new_radius,
+        n: pool.n_assets,
+    };
+    Ok(new_radius)
+}
+
 /// Verify sphere invariant: ||r⃗ - x⃗||² ≈ r² (O(1) path).
 ///
 /// Constructs a transient ReserveState for O(1) distance computation,
@@ -221,22 +234,9 @@ pub fn initialize_pool_reserves(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::core::test_helpers::{make_pool, unique_pubkeys};
-
-    /// Generous epsilon for sqrt-derived comparisons (~2^-22)
-    fn sqrt_epsilon() -> FixedPoint {
-        FixedPoint::from_raw(1i128 << 42)
-    }
-
-    /// Initialize a pool with equal deposits and return it.
-    fn init_pool(n: u8, deposit: i64) -> PoolState {
-        let mut pool = make_pool(n);
-        let deposit_fp = FixedPoint::from_int(deposit);
-        let mints = unique_pubkeys(n as usize);
-        let vaults = unique_pubkeys(n as usize);
-        initialize_pool_reserves(&mut pool, deposit_fp, &mints, &vaults).unwrap();
-        pool
-    }
+    use crate::domain::core::test_helpers::{
+        init_pool, make_pool, sqrt_epsilon, unique_pubkeys,
+    };
 
     // ══════════════════════════════════════════════
     // compute_radius_from_deposit tests

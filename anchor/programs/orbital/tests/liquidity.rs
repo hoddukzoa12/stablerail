@@ -363,23 +363,21 @@ fn setup_pool(deposit: u64) -> TestPool {
     }
 }
 
-// ══════════════════════════════════════════════
-// Test 1: add_liquidity deposits tokens and creates position
-// ══════════════════════════════════════════════
+// ── Provider helper: create ATAs, mint tokens, execute add_liquidity ──
 
-#[test]
-fn test_add_liquidity_deposits_and_creates_position() {
-    let mut tp = setup_pool(1_000_000);
+struct ProviderSetup {
+    provider: Keypair,
+    provider_atas: Vec<Pubkey>,
+    position_pda: Pubkey,
+}
 
-    // Create a separate provider
+/// Create a provider with funded ATAs and execute add_liquidity.
+fn add_provider_liquidity(tp: &mut TestPool, add_amount: u64, position_index: u64) -> ProviderSetup {
     let provider = Keypair::new();
     tp.svm
         .airdrop(&provider.pubkey(), 5_000_000_000)
         .unwrap();
 
-    let add_amount: u64 = 500_000;
-
-    // Create provider ATAs and mint tokens (authority is mint authority)
     let mut provider_atas = Vec::new();
     for mint_kp in &tp.mints {
         let ata = create_ata(&mut tp.svm, &tp.authority, &mint_kp.pubkey(), &provider.pubkey());
@@ -393,15 +391,12 @@ fn test_add_liquidity_deposits_and_creates_position() {
         provider_atas.push(ata);
     }
 
-    // Build add_liquidity instruction
     let mut amounts = [0u64; MAX_ASSETS];
     for i in 0..(tp.n_assets as usize) {
         amounts[i] = add_amount;
     }
-    let data = build_add_liquidity_data(amounts);
 
-    let (position_pda, _) =
-        derive_position_pda(&tp.pool_pda, &provider.pubkey(), 0); // position_count starts at 0
+    let (position_pda, _) = derive_position_pda(&tp.pool_pda, &provider.pubkey(), position_index);
 
     let mut accounts = vec![
         AccountMeta::new(provider.pubkey(), true),
@@ -410,8 +405,6 @@ fn test_add_liquidity_deposits_and_creates_position() {
         AccountMeta::new_readonly(system_program::id(), false),
         AccountMeta::new_readonly(TOKEN_PROGRAM_ID, false),
     ];
-
-    // remaining_accounts: vaults, provider ATAs
     for vault in &tp.vault_pdas {
         accounts.push(AccountMeta::new(*vault, false));
     }
@@ -422,7 +415,7 @@ fn test_add_liquidity_deposits_and_creates_position() {
     let ix = Instruction {
         program_id: PROGRAM_ID,
         accounts,
-        data,
+        data: build_add_liquidity_data(amounts),
     };
 
     let blockhash = tp.svm.latest_blockhash();
@@ -432,13 +425,27 @@ fn test_add_liquidity_deposits_and_creates_position() {
         &[&provider],
         blockhash,
     );
+    tp.svm
+        .send_transaction(tx)
+        .expect("add_liquidity should succeed");
 
-    let result = tp.svm.send_transaction(tx);
-    assert!(
-        result.is_ok(),
-        "add_liquidity failed: {:?}",
-        result.err()
-    );
+    ProviderSetup {
+        provider,
+        provider_atas,
+        position_pda,
+    }
+}
+
+// ══════════════════════════════════════════════
+// Test 1: add_liquidity deposits tokens and creates position
+// ══════════════════════════════════════════════
+
+#[test]
+fn test_add_liquidity_deposits_and_creates_position() {
+    let mut tp = setup_pool(1_000_000);
+    let add_amount: u64 = 500_000;
+
+    let ps = add_provider_liquidity(&mut tp, add_amount, 0);
 
     // ── Verify vault balances ──
     for (i, vault) in tp.vault_pdas.iter().enumerate() {
@@ -454,7 +461,7 @@ fn test_add_liquidity_deposits_and_creates_position() {
     // ── Verify position account exists ──
     let position_account = tp
         .svm
-        .get_account(&position_pda)
+        .get_account(&ps.position_pda)
         .expect("position account should exist");
     assert!(
         !position_account.data.is_empty(),
@@ -462,7 +469,7 @@ fn test_add_liquidity_deposits_and_creates_position() {
     );
 
     // ── Verify provider ATAs are drained ──
-    for (i, ata) in provider_atas.iter().enumerate() {
+    for (i, ata) in ps.provider_atas.iter().enumerate() {
         let balance = read_token_amount(&tp.svm, ata);
         assert_eq!(
             balance, 0,
@@ -479,66 +486,9 @@ fn test_add_liquidity_deposits_and_creates_position() {
 #[test]
 fn test_remove_liquidity_returns_tokens() {
     let mut tp = setup_pool(1_000_000);
-
-    // Setup provider and add liquidity first
-    let provider = Keypair::new();
-    tp.svm
-        .airdrop(&provider.pubkey(), 5_000_000_000)
-        .unwrap();
-
     let add_amount: u64 = 500_000;
 
-    let mut provider_atas = Vec::new();
-    for mint_kp in &tp.mints {
-        let ata = create_ata(&mut tp.svm, &tp.authority, &mint_kp.pubkey(), &provider.pubkey());
-        mint_to(
-            &mut tp.svm,
-            &tp.authority,
-            &mint_kp.pubkey(),
-            &ata,
-            add_amount,
-        );
-        provider_atas.push(ata);
-    }
-
-    // Add liquidity
-    let mut amounts = [0u64; MAX_ASSETS];
-    for i in 0..(tp.n_assets as usize) {
-        amounts[i] = add_amount;
-    }
-
-    let (position_pda, _) = derive_position_pda(&tp.pool_pda, &provider.pubkey(), 0);
-
-    let mut add_accounts = vec![
-        AccountMeta::new(provider.pubkey(), true),
-        AccountMeta::new(tp.pool_pda, false),
-        AccountMeta::new(position_pda, false),
-        AccountMeta::new_readonly(system_program::id(), false),
-        AccountMeta::new_readonly(TOKEN_PROGRAM_ID, false),
-    ];
-    for vault in &tp.vault_pdas {
-        add_accounts.push(AccountMeta::new(*vault, false));
-    }
-    for ata in &provider_atas {
-        add_accounts.push(AccountMeta::new(*ata, false));
-    }
-
-    let add_ix = Instruction {
-        program_id: PROGRAM_ID,
-        accounts: add_accounts,
-        data: build_add_liquidity_data(amounts),
-    };
-
-    let blockhash = tp.svm.latest_blockhash();
-    let tx = Transaction::new_signed_with_payer(
-        &[add_ix],
-        Some(&provider.pubkey()),
-        &[&provider],
-        blockhash,
-    );
-    tp.svm
-        .send_transaction(tx)
-        .expect("add_liquidity should succeed");
+    let ps = add_provider_liquidity(&mut tp, add_amount, 0);
 
     // Now remove all liquidity
     // liquidity = sum of deposits = 500_000 * 3 = 1_500_000
@@ -546,16 +496,15 @@ fn test_remove_liquidity_returns_tokens() {
     let remove_data = build_remove_liquidity_data(liquidity_to_remove);
 
     let mut remove_accounts = vec![
-        AccountMeta::new(provider.pubkey(), true),
+        AccountMeta::new(ps.provider.pubkey(), true),
         AccountMeta::new(tp.pool_pda, false),
-        AccountMeta::new(position_pda, false),
+        AccountMeta::new(ps.position_pda, false),
         AccountMeta::new_readonly(TOKEN_PROGRAM_ID, false),
-        AccountMeta::new_readonly(system_program::id(), false),
     ];
     for vault in &tp.vault_pdas {
         remove_accounts.push(AccountMeta::new(*vault, false));
     }
-    for ata in &provider_atas {
+    for ata in &ps.provider_atas {
         remove_accounts.push(AccountMeta::new(*ata, false));
     }
 
@@ -568,8 +517,8 @@ fn test_remove_liquidity_returns_tokens() {
     let blockhash = tp.svm.latest_blockhash();
     let tx = Transaction::new_signed_with_payer(
         &[remove_ix],
-        Some(&provider.pubkey()),
-        &[&provider],
+        Some(&ps.provider.pubkey()),
+        &[&ps.provider],
         blockhash,
     );
 
@@ -581,11 +530,7 @@ fn test_remove_liquidity_returns_tokens() {
     );
 
     // ── Verify provider got tokens back ──
-    // Total pool liquidity was 300 (init) + 1500 (add) = 4500 (as FixedPoint integer parts)
-    // Actually, init deposit = 1_000_000 * 3 = 3_000_000 total, add = 500_000 * 3 = 1_500_000
-    // fraction = 1_500_000 / 4_500_000 = 1/3
-    // return per vault = 1_500_000 * 1/3 = 500_000 (each vault had 1.5M)
-    for (i, ata) in provider_atas.iter().enumerate() {
+    for (i, ata) in ps.provider_atas.iter().enumerate() {
         let balance = read_token_amount(&tp.svm, ata);
         assert!(
             balance > 0,
@@ -619,24 +564,17 @@ fn test_add_liquidity_rejects_zero_amount() {
         .airdrop(&provider.pubkey(), 5_000_000_000)
         .unwrap();
 
-    // Create provider ATAs (even though amounts include zero)
     let mut provider_atas = Vec::new();
     for mint_kp in &tp.mints {
         let ata = create_ata(&mut tp.svm, &tp.authority, &mint_kp.pubkey(), &provider.pubkey());
-        mint_to(
-            &mut tp.svm,
-            &tp.authority,
-            &mint_kp.pubkey(),
-            &ata,
-            1_000_000,
-        );
+        mint_to(&mut tp.svm, &tp.authority, &mint_kp.pubkey(), &ata, 1_000_000);
         provider_atas.push(ata);
     }
 
-    // amounts with a zero entry
+    // amounts with a zero entry — should cause rejection
     let mut amounts = [0u64; MAX_ASSETS];
     amounts[0] = 500_000;
-    amounts[1] = 0; // should cause rejection
+    amounts[1] = 0;
     amounts[2] = 500_000;
 
     let (position_pda, _) = derive_position_pda(&tp.pool_pda, &provider.pubkey(), 0);
@@ -669,9 +607,8 @@ fn test_add_liquidity_rejects_zero_amount() {
         blockhash,
     );
 
-    let result = tp.svm.send_transaction(tx);
     assert!(
-        result.is_err(),
+        tp.svm.send_transaction(tx).is_err(),
         "add_liquidity should reject zero amount"
     );
 }

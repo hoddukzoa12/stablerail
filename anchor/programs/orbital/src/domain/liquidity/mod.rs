@@ -8,9 +8,9 @@
 
 use anchor_lang::prelude::*;
 
-use crate::domain::core::{compute_radius_from_reserves, update_caches, verify_invariant};
+use crate::domain::core::{recompute_sphere, update_caches, verify_invariant};
 use crate::errors::OrbitalError;
-use crate::math::sphere::{Sphere, MAX_ASSETS};
+use crate::math::sphere::MAX_ASSETS;
 use crate::math::FixedPoint;
 use crate::state::PoolState;
 
@@ -40,12 +40,11 @@ pub struct RemoveLiquidityResult {
 ///
 /// Workflow:
 ///   1. Validate all deposits are positive for active assets
-///   2. Add deposits to reserves
-///   3. Compute liquidity as sum of deposits
-///   4. Recompute sphere radius from new reserves
-///   5. Update total_interior_liquidity
-///   6. Update caches (alpha, w_norm_sq)
-///   7. Verify sphere invariant (post-condition)
+///   2. Add deposits to reserves and accumulate liquidity sum
+///   3. Recompute sphere radius from new reserves
+///   4. Update total_interior_liquidity
+///   5. Update caches (alpha, w_norm_sq)
+///   6. Verify sphere invariant (post-condition)
 ///
 /// Precondition: SPL token transfers already completed by instruction handler.
 pub fn add_liquidity_to_pool(
@@ -63,31 +62,23 @@ pub fn add_liquidity_to_pool(
         );
     }
 
-    // 2. Add deposits to reserves
-    for i in 0..n {
-        pool.reserves[i] = pool.reserves[i].checked_add(deposits[i])?;
-    }
-
-    // 3. Compute liquidity as sum of deposits
+    // 2. Add deposits to reserves and accumulate liquidity sum
     let mut liquidity = FixedPoint::zero();
     for i in 0..n {
+        pool.reserves[i] = pool.reserves[i].checked_add(deposits[i])?;
         liquidity = liquidity.checked_add(deposits[i])?;
     }
 
-    // 4. Recompute sphere radius from new reserves
-    let new_radius = compute_radius_from_reserves(&pool.reserves, pool.n_assets)?;
-    pool.sphere = Sphere {
-        radius: new_radius,
-        n: pool.n_assets,
-    };
+    // 3. Recompute sphere radius
+    let new_radius = recompute_sphere(pool)?;
 
-    // 5. Update total liquidity tracking
+    // 4. Update total liquidity tracking
     pool.total_interior_liquidity = pool.total_interior_liquidity.checked_add(liquidity)?;
 
-    // 6. Update caches
+    // 5. Update caches
     update_caches(pool)?;
 
-    // 7. Post-condition: invariant must hold
+    // 6. Post-condition: invariant must hold
     verify_invariant(pool)?;
 
     Ok(AddLiquidityResult {
@@ -149,7 +140,7 @@ pub fn remove_liquidity_from_pool(
     // 5. Subtract truncated returns from reserves (aligned with SPL transfers
     //    to prevent reserve/vault drift from fractional rounding).
     for i in 0..n {
-        let transferred = FixedPoint::from_int(return_amounts_u64[i] as i64);
+        let transferred = FixedPoint::checked_from_u64(return_amounts_u64[i])?;
         pool.reserves[i] = pool.reserves[i].checked_sub(transferred)?;
     }
 
@@ -157,11 +148,7 @@ pub fn remove_liquidity_from_pool(
     pool.total_interior_liquidity = pool.total_interior_liquidity.checked_sub(remove_amount)?;
 
     // 7. Recompute sphere radius
-    let new_radius = compute_radius_from_reserves(&pool.reserves, pool.n_assets)?;
-    pool.sphere = Sphere {
-        radius: new_radius,
-        n: pool.n_assets,
-    };
+    let new_radius = recompute_sphere(pool)?;
 
     // 8. Update caches
     update_caches(pool)?;
@@ -179,23 +166,8 @@ pub fn remove_liquidity_from_pool(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::core::test_helpers::{make_pool, unique_pubkeys};
-    use crate::domain::core::initialize_pool_reserves;
-
-    /// Generous epsilon for sqrt-derived comparisons (~2^-22)
-    fn sqrt_epsilon() -> FixedPoint {
-        FixedPoint::from_raw(1i128 << 42)
-    }
-
-    /// Initialize a pool with equal deposits and return it.
-    fn init_pool(n: u8, deposit: i64) -> PoolState {
-        let mut pool = make_pool(n);
-        let deposit_fp = FixedPoint::from_int(deposit);
-        let mints = unique_pubkeys(n as usize);
-        let vaults = unique_pubkeys(n as usize);
-        initialize_pool_reserves(&mut pool, deposit_fp, &mints, &vaults).unwrap();
-        pool
-    }
+    use crate::domain::core::test_helpers::{init_pool, sqrt_epsilon};
+    use crate::domain::core::verify_invariant;
 
     // ══════════════════════════════════════════════
     // add_liquidity_to_pool tests
