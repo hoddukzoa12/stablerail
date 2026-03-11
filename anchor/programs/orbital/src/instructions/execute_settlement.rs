@@ -144,6 +144,23 @@ pub fn handler<'info>(
         OrbitalError::InvalidVaultAddress
     );
 
+    // ── Validate executor_ata_out is owned by executor ──
+    // SPL Token Transfer does not enforce destination owner. Without this
+    // check an allowlisted executor could route settlement output to an
+    // arbitrary account of the same mint, producing a misleading audit trail.
+    {
+        let ata_out_data = remaining[3].try_borrow_data()?;
+        require!(
+            ata_out_data.len() >= 64,
+            OrbitalError::InvalidRemainingAccounts
+        );
+        // SPL Token Account layout: [mint 32B][owner 32B][amount 8B]...
+        require!(
+            ata_out_data[32..64] == executor.key().to_bytes(),
+            OrbitalError::Unauthorized
+        );
+    }
+
     // ── SPL transfer IN: executor_ata_in → vault_in (executor signs) ──
     token::transfer(
         CpiContext::new(
@@ -200,6 +217,16 @@ pub fn handler<'info>(
         ),
         amount_out_u64,
     )?;
+
+    // ── Correct reserve for Q64.64 → u64 truncation drift ──
+    // execute_swap subtracts the full FixedPoint amount_out from reserves,
+    // but the SPL transfer only moves the truncated u64. Add back the
+    // fractional dust so reserves match the actual vault balance.
+    let transferred_fp = FixedPoint::checked_from_u64(amount_out_u64)?;
+    let truncation_dust = result.amount_out.checked_sub(transferred_fp)?;
+    if truncation_dust.raw > 0 {
+        pool.reserves[token_out] = pool.reserves[token_out].checked_add(truncation_dust)?;
+    }
 
     // ── Compute action_hash (on-chain SHA256 syscall) ──
     let settlement_key = ctx.accounts.settlement.key();

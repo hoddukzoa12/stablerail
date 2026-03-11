@@ -33,6 +33,7 @@ use orbital::math::{FixedPoint, Sphere};
 const ERROR_UNAUTHORIZED: u32 = 6021;
 const ERROR_POLICY_LIMIT_EXCEEDED: u32 = 6023;
 const ERROR_SETTLEMENT_POLICY_VIOLATION: u32 = 6027;
+const ERROR_DAILY_VOLUME_LIMIT_EXCEEDED: u32 = 6037;
 
 // ── Settlement-Specific PDA Derivation ──
 
@@ -657,5 +658,33 @@ fn test_settlement_rejects_inactive_policy() {
         extract_anchor_error_code(&err),
         Some(ERROR_SETTLEMENT_POLICY_VIOLATION),
         "expected SettlementPolicyViolation (6027), got: {err}"
+    );
+}
+
+// ══════════════════════════════════════════════
+// Test 6: settlement rejects when daily volume exceeded
+// ══════════════════════════════════════════════
+
+#[test]
+fn test_settlement_rejects_daily_volume_exceeded() {
+    // Set max_daily_volume to 15_000 so two 10_000 settlements exceed it
+    let mut env = setup_settlement_env(1_000_000, 500_000, 15_000);
+    let (executor, executor_atas) = setup_executor(&mut env, 500_000);
+
+    // First settlement (10_000) should succeed — cumulative = 10_000 <= 15_000
+    send_settlement(
+        &mut env, &executor, &executor_atas, 0, 1, 10_000, 1, 0,
+    )
+    .expect("first settlement should succeed");
+
+    // Second settlement (10_000) should fail — cumulative = 20_000 > 15_000
+    let result = send_settlement(
+        &mut env, &executor, &executor_atas, 0, 1, 10_000, 1, 1,
+    );
+    let err = result.unwrap_err();
+    assert_eq!(
+        extract_anchor_error_code(&err),
+        Some(ERROR_DAILY_VOLUME_LIMIT_EXCEEDED),
+        "expected DailyVolumeLimitExceeded (6037), got: {err}"
     );
 }
