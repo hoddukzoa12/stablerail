@@ -573,3 +573,39 @@ fn test_settlement_rejects_daily_volume_exceeded() {
         "expected DailyVolumeLimitExceeded (6037), got: {err}"
     );
 }
+
+// ══════════════════════════════════════════════
+// Test 7: settlement rejects foreign-owned ATA out
+// ══════════════════════════════════════════════
+
+#[test]
+fn test_settlement_rejects_foreign_ata_out() {
+    let mut env = setup_settlement_env(1_000_000, 500_000, 10_000_000);
+    let (executor, executor_atas) = setup_executor(&mut env, 500_000);
+
+    // Create a foreign user with an ATA for token_out mint (index 1)
+    let foreign = Keypair::new();
+    env.svm
+        .airdrop(&foreign.pubkey(), 1_000_000_000)
+        .unwrap();
+    let foreign_ata_out = create_ata(
+        &mut env.svm,
+        &env.authority,
+        &env.mints[1].pubkey(),
+        &foreign.pubkey(),
+    );
+
+    // Replace executor_ata_out with foreign-owned ATA
+    let mut spoofed_atas = executor_atas.clone();
+    spoofed_atas[1] = foreign_ata_out;
+
+    let result = send_settlement(
+        &mut env, &executor, &spoofed_atas, 0, 1, 10_000, 1, 0,
+    );
+    let err = result.unwrap_err();
+    assert_eq!(
+        extract_anchor_error_code(&err),
+        Some(ERROR_UNAUTHORIZED),
+        "expected Unauthorized (6021) for foreign-owned ATA out, got: {err}"
+    );
+}
