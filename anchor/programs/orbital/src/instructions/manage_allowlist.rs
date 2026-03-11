@@ -2,6 +2,7 @@ use anchor_lang::prelude::*;
 
 use crate::state::{AllowlistState, PolicyState, allowlist::MAX_ALLOWLIST_SIZE};
 use crate::errors::OrbitalError;
+use crate::events::{MemberAdded, MemberRemoved};
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
 pub enum AllowlistAction {
@@ -49,13 +50,29 @@ pub fn handler(ctx: Context<ManageAllowlist>, params: ManageAllowlistParams) -> 
         allowlist._reserved = [0u8; 64];
     }
 
+    let clock = Clock::get()?;
+    let policy_key = ctx.accounts.policy.key();
+    let authority_key = ctx.accounts.authority.key();
+
     match params.action {
         AllowlistAction::Add => {
             allowlist.add(params.address)?;
+            emit!(MemberAdded {
+                policy: policy_key,
+                authority: authority_key,
+                member: params.address,
+                timestamp: clock.unix_timestamp,
+            });
             msg!("Added {} to allowlist", params.address);
         }
         AllowlistAction::Remove => {
             allowlist.remove(&params.address)?;
+            emit!(MemberRemoved {
+                policy: policy_key,
+                authority: authority_key,
+                member: params.address,
+                timestamp: clock.unix_timestamp,
+            });
             msg!("Removed {} from allowlist", params.address);
         }
     }

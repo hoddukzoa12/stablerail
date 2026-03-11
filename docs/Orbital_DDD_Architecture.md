@@ -1045,7 +1045,7 @@ programs/orbital/src/contexts/settlement/
 │   ├── value_objects/
 │   │   ├── settlement_request.rs  # 전환 요청 파라미터
 │   │   ├── settlement_result.rs   # 실행 결과
-│   │   └── operator_role.rs       # Admin | Operator | Viewer
+│   │   └── operator_role.rs       # (MVP: 스킵) authority + allowlist.contains()로 암묵적 분리
 │   ├── events/
 │   │   ├── settlement_requested.rs
 │   │   ├── settlement_executed.rs
@@ -1225,7 +1225,7 @@ pub struct AuditEntry {
 | Policy | 기관이 설정한 settlement 규칙의 집합 |
 | Institution | Policy를 소유하는 기관 |
 | Allowlist | Settlement을 실행할 수 있는 wallet 목록 |
-| Role | Admin, Operator, Viewer 중 하나 |
+| Role | ~~Admin, Operator, Viewer 중 하나~~ → MVP에서 스킵. `policy.authority`=Admin, `allowlist.contains()`=Operator로 암묵적 분리 |
 | Limit | 거래 금액 또는 빈도 제한 |
 
 ```
@@ -1237,7 +1237,7 @@ programs/orbital/src/contexts/policy/
 │   ├── entities/
 │   │   └── allowlist_entry.rs     # Allowlist member
 │   ├── value_objects/
-│   │   ├── role.rs                # Admin | Operator | Viewer
+│   │   ├── role.rs                # (MVP: 스킵) authority + allowlist.contains()로 암묵적 분리
 │   │   ├── token_whitelist.rs     # 허용 토큰 목록
 │   │   └── limits.rs              # 거래 한도
 │   ├── events/
@@ -1293,11 +1293,11 @@ impl Policy {
         // 1. Policy 활성 상태 확인
         require!(self.is_active, PolicyError::PolicyInactive);
 
-        // 2. Operator 권한 확인
-        let entry = self.find_member(operator)?;
+        // 2. Operator 권한 확인 (MVP: allowlist.contains()로 대체)
+        // Role enum 스킵 — allowlist에 존재하면 실행 권한 있음
         require!(
-            entry.role == Role::Operator || entry.role == Role::Admin,
-            PolicyError::InsufficientRole
+            self.has_member(operator),
+            PolicyError::NotInAllowlist
         );
 
         // 3. Token whitelist 확인
@@ -1326,26 +1326,24 @@ impl Policy {
         Ok(())
     }
 
-    /// Allowlist에 멤버 추가 (Admin만 가능)
+    /// Allowlist에 멤버 추가 (authority만 가능, MVP: Role 파라미터 스킵)
     pub fn add_member(
         &mut self,
         caller: &Pubkey,
         wallet: Pubkey,
-        role: Role,
     ) -> Result<()> {
         require!(*caller == self.admin, PolicyError::NotAdmin);
         require!(!self.has_member(&wallet), PolicyError::AlreadyMember);
 
         self.allowlist.push(AllowlistEntry {
             wallet,
-            role,
+            // MVP: role 필드 없음 — allowlist 존재 여부로 권한 판단
             added_at: Clock::get()?.unix_timestamp,
         });
 
         emit!(MemberAdded {
             policy: self.policy_id,
             wallet,
-            role,
         });
 
         Ok(())

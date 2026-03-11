@@ -179,7 +179,8 @@ Orbital AMM Core 위에 기관용 기능을 추가한다.
 **Allowlist Manager**
 
 - 기관 wallet allowlist 관리
-- Role-based access: Admin(정책 설정), Operator(settlement 실행), Viewer(조회만)
+- 암묵적 role 분리: authority=Admin(정책 설정/allowlist 관리), allowlist 멤버=Operator(settlement 실행)
+- ~~Role enum (Admin/Operator/Viewer)~~ → MVP에서 스킵. `policy.authority` 와 `allowlist.contains()` 로 충분한 접근 제어 구현
 - 허용되지 않은 wallet의 settlement 요청 거부
 
 **Audit Trail**

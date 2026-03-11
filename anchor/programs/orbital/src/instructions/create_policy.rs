@@ -2,6 +2,7 @@ use anchor_lang::prelude::*;
 
 use crate::state::{PoolState, PolicyState};
 use crate::errors::OrbitalError;
+use crate::events::PolicyCreated;
 use crate::math::FixedPoint;
 
 #[derive(AnchorSerialize, AnchorDeserialize)]
@@ -50,6 +51,14 @@ pub fn handler(ctx: Context<CreatePolicy>, params: CreatePolicyParams) -> Result
     policy.last_reset_timestamp = clock.unix_timestamp;
     policy.created_at = clock.unix_timestamp;
     policy.updated_at = clock.unix_timestamp;
+
+    emit!(PolicyCreated {
+        pool: ctx.accounts.pool.key(),
+        authority: ctx.accounts.authority.key(),
+        max_trade_amount: policy.max_trade_amount.raw,
+        max_daily_volume: policy.max_daily_volume.raw,
+        timestamp: clock.unix_timestamp,
+    });
 
     msg!("Policy created for pool {}", ctx.accounts.pool.key());
     Ok(())

@@ -110,3 +110,63 @@ pub struct LiquidityRemoved {
     /// Unix timestamp
     pub timestamp: i64,
 }
+
+// ═══════════════════════════════════════════
+//  Policy Context Events
+// ═══════════════════════════════════════════
+
+/// Emitted when a new policy is created via `create_policy`.
+#[event]
+pub struct PolicyCreated {
+    /// Pool account pubkey
+    pub pool: Pubkey,
+    /// Policy authority (must match pool authority)
+    pub authority: Pubkey,
+    /// Maximum trade amount per transaction (Q64.64 raw)
+    pub max_trade_amount: i128,
+    /// Maximum daily volume (Q64.64 raw)
+    pub max_daily_volume: i128,
+    /// Unix timestamp
+    pub timestamp: i64,
+}
+
+/// Emitted when a policy is updated via `update_policy`.
+#[event]
+pub struct PolicyUpdated {
+    /// Policy account pubkey
+    pub policy: Pubkey,
+    /// Updated max trade amount (Q64.64 raw), None if unchanged
+    pub max_trade_amount: Option<i128>,
+    /// Updated max daily volume (Q64.64 raw), None if unchanged
+    pub max_daily_volume: Option<i128>,
+    /// Updated is_active flag, None if unchanged
+    pub is_active: Option<bool>,
+    /// Unix timestamp
+    pub timestamp: i64,
+}
+
+/// Emitted when a member is added to the allowlist via `manage_allowlist`.
+#[event]
+pub struct MemberAdded {
+    /// Policy account pubkey
+    pub policy: Pubkey,
+    /// Authority who added the member
+    pub authority: Pubkey,
+    /// Member address added
+    pub member: Pubkey,
+    /// Unix timestamp
+    pub timestamp: i64,
+}
+
+/// Emitted when a member is removed from the allowlist via `manage_allowlist`.
+#[event]
+pub struct MemberRemoved {
+    /// Policy account pubkey
+    pub policy: Pubkey,
+    /// Authority who removed the member
+    pub authority: Pubkey,
+    /// Member address removed
+    pub member: Pubkey,
+    /// Unix timestamp
+    pub timestamp: i64,
+}
