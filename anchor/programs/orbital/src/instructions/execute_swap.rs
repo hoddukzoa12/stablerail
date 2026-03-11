@@ -54,11 +54,15 @@ pub fn handler<'info>(
     let token_out = params.token_out_index as usize;
 
     // ── Early validation (save CU on bad inputs) ──
+    // (Domain layer also validates; these early checks avoid wasting CU on
+    //  SPL transfers that would ultimately be reverted.)
     require!(pool.is_active, OrbitalError::PoolNotActive);
     require!(
         token_in < pool.n_assets as usize && token_out < pool.n_assets as usize,
         OrbitalError::InvalidTokenIndex
     );
+    require!(token_in != token_out, OrbitalError::SameTokenSwap);
+    require!(params.amount_in > 0, OrbitalError::NegativeTradeAmount);
 
     let remaining = &ctx.remaining_accounts;
     require!(remaining.len() == 4, OrbitalError::InvalidRemainingAccounts);

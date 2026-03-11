@@ -502,6 +502,19 @@ fn send_swap(
         .map_err(|e| format!("{:?}", e))
 }
 
+/// Extract Anchor custom error code from a `send_swap` error string.
+/// Anchor error codes = 6000 + enum variant index.
+fn extract_anchor_error_code(err: &str) -> Option<u32> {
+    // Debug format: "... Custom(6011) ..."
+    let start = err.find("Custom(")? + 7;
+    let end = start + err[start..].find(')')?;
+    err[start..end].parse().ok()
+}
+
+// ── Anchor error codes (6000 + OrbitalError variant index) ──
+const ERROR_SLIPPAGE_EXCEEDED: u32 = 6010;
+const ERROR_SAME_TOKEN_SWAP: u32 = 6011;
+
 // ══════════════════════════════════════════════
 // Test 1: swap transfers tokens correctly
 // ══════════════════════════════════════════════
@@ -586,9 +599,11 @@ fn test_swap_rejects_same_token() {
         0, 0, // same token
         10_000, 9_000, 1,
     );
-    assert!(
-        result.is_err(),
-        "swap with same token should fail"
+    let err = result.unwrap_err();
+    assert_eq!(
+        extract_anchor_error_code(&err),
+        Some(ERROR_SAME_TOKEN_SWAP),
+        "expected SameTokenSwap (6011), got: {err}"
     );
 }
 
@@ -616,9 +631,11 @@ fn test_swap_rejects_slippage_exceeded() {
         expected_out,
         expected_out + 1_000, // min_out > actual → must reject
     );
-    assert!(
-        result.is_err(),
-        "swap with min_amount_out > actual output should fail (slippage exceeded)"
+    let err = result.unwrap_err();
+    assert_eq!(
+        extract_anchor_error_code(&err),
+        Some(ERROR_SLIPPAGE_EXCEEDED),
+        "expected SlippageExceeded (6010), got: {err}"
     );
 }
 
