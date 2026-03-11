@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 use anchor_lang::solana_program::hash::hashv;
 use anchor_spl::token::{self, Token};
 
-use crate::domain::core::swap;
+use crate::domain::core::{swap, update_caches};
 use crate::errors::OrbitalError;
 use crate::events::SettlementExecuted;
 use crate::math::newton::compute_amount_out_analytical;
@@ -226,6 +226,7 @@ pub fn handler<'info>(
     let truncation_dust = result.amount_out.checked_sub(transferred_fp)?;
     if truncation_dust.raw > 0 {
         pool.reserves[token_out] = pool.reserves[token_out].checked_add(truncation_dust)?;
+        update_caches(pool)?;
     }
 
     // ── Compute action_hash (on-chain SHA256 syscall) ──
