@@ -623,6 +623,6 @@ fn test_update_policy_rejects_no_fields() {
     assert_eq!(
         extract_anchor_error_code(&err),
         Some(ERROR_NO_FIELDS_TO_UPDATE),
-        "expected NoFieldsToUpdate (6037), got: {err}"
+        "expected NoFieldsToUpdate (6036), got: {err}"
     );
 }
