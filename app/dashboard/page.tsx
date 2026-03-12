@@ -18,7 +18,7 @@ import { Button } from "../components/ui/button";
 
 export default function DashboardPage() {
   const { status } = useWalletConnection();
-  const { pool, isLoading: poolLoading } = usePoolState();
+  const { pool, isLoading: poolLoading, refresh: refreshPool } = usePoolState();
   const { balances, refresh: refreshBalances } = useTokenBalances();
   const {
     positions,
@@ -35,6 +35,7 @@ export default function DashboardPage() {
   const isConnected = status === "connected";
 
   const handleLiquiditySuccess = () => {
+    refreshPool();
     refreshBalances();
     refreshPositions();
   };

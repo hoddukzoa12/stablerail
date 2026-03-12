@@ -12,9 +12,11 @@ interface AddLiquidityFormProps {
   onSuccess: () => void;
 }
 
+/** Format balance with floor truncation (DeFi standard: never show more than you have) */
 function formatBalance(baseUnits: bigint, decimals: number): string {
   const whole = Number(baseUnits) / 10 ** decimals;
-  return whole.toLocaleString("en-US", {
+  const floored = Math.floor(whole * 100) / 100;
+  return floored.toLocaleString("en-US", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });

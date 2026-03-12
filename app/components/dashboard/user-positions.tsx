@@ -56,15 +56,29 @@ export function UserPositions({
   const [removingAddress, setRemovingAddress] = useState<string | null>(null);
   const [txResult, setTxResult] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ActiveTab>("positions");
+  /** Per-position removal percentage: 25 | 50 | 75 | 100 */
+  const [removePercent, setRemovePercent] = useState<Record<string, number>>({});
+
+  // Filter out fully withdrawn (liquidity = 0) positions
+  const activePositions = positions.filter((p) => p.liquidityRaw > 0n);
+
+  const getPercent = (address: string) => removePercent[address] ?? 100;
 
   const handleRemove = async (position: UserPosition) => {
     setRemovingAddress(position.address);
     setTxResult(null);
 
+    const pct = getPercent(position.address);
+    // Calculate partial liquidity: liquidityRaw * pct / 100
+    const partialRaw =
+      pct === 100
+        ? position.liquidityRaw
+        : (position.liquidityRaw * BigInt(pct)) / 100n;
+
     try {
       const sig = await execute({
         positionAddress: position.address,
-        liquidityRaw: position.liquidityRaw,
+        liquidityRaw: partialRaw,
       });
       setTxResult(sig);
       onRemoveSuccess();
@@ -89,9 +103,9 @@ export function UserPositions({
           onClick={() => setActiveTab("positions")}
         >
           Positions
-          {positions.length > 0 && (
+          {activePositions.length > 0 && (
             <span className="ml-1.5 rounded-full bg-accent-purple/20 px-1.5 py-0.5 text-[10px] font-semibold text-accent-purple">
-              {positions.length}
+              {activePositions.length}
             </span>
           )}
         </button>
@@ -122,14 +136,14 @@ export function UserPositions({
             </p>
           )}
 
-          {!isLoading && positions.length === 0 && (
+          {!isLoading && activePositions.length === 0 && (
             <p className="py-6 text-center text-sm text-text-tertiary">
-              No positions yet. Add liquidity to get started.
+              No active positions. Add liquidity to get started.
             </p>
           )}
 
           <div className="space-y-3">
-            {positions.map((pos, i) => (
+            {activePositions.map((pos, i) => (
               <div
                 key={pos.address}
                 className="rounded-lg bg-surface-2 p-3"
@@ -137,38 +151,68 @@ export function UserPositions({
                 <div className="flex items-start justify-between">
                   <div>
                     <p className="text-sm font-medium text-text-primary">
-                      Position #{positions.length - i}
+                      Position #{activePositions.length - i}
                     </p>
-                    <p className="mt-0.5 font-mono text-xs text-text-tertiary">
-                      {truncateAddress(pos.address)}
-                    </p>
+                    <a
+                      href={`https://explorer.solana.com/address/${pos.address}?cluster=devnet`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-0.5 font-mono text-xs text-text-tertiary underline-offset-2 hover:text-accent-blue hover:underline"
+                    >
+                      {truncateAddress(pos.address)} ↗
+                    </a>
                   </div>
                   <span className="text-xs text-text-tertiary">
                     {formatDate(pos.createdAt)}
                   </span>
                 </div>
 
-                <div className="mt-2 flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-text-tertiary">Liquidity</p>
-                    <p className="font-mono text-sm font-semibold text-text-primary">
-                      {pos.liquidityDisplay.toLocaleString("en-US", {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 4,
-                      })}
-                    </p>
+                <div className="mt-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs text-text-tertiary">Liquidity</p>
+                      <p className="font-mono text-sm font-semibold text-text-primary">
+                        {pos.liquidityDisplay.toLocaleString("en-US", {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 4,
+                        })}
+                      </p>
+                    </div>
+
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      disabled={isSending && removingAddress === pos.address}
+                      onClick={() => handleRemove(pos)}
+                    >
+                      {isSending && removingAddress === pos.address
+                        ? "Removing..."
+                        : `Remove ${getPercent(pos.address)}%`}
+                    </Button>
                   </div>
 
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    disabled={isSending && removingAddress === pos.address}
-                    onClick={() => handleRemove(pos)}
-                  >
-                    {isSending && removingAddress === pos.address
-                      ? "Removing..."
-                      : "Remove"}
-                  </Button>
+                  {/* Percentage selector */}
+                  <div className="mt-2 flex gap-1">
+                    {[25, 50, 75, 100].map((pct) => (
+                      <button
+                        key={pct}
+                        type="button"
+                        onClick={() =>
+                          setRemovePercent((prev) => ({
+                            ...prev,
+                            [pos.address]: pct,
+                          }))
+                        }
+                        className={`flex-1 rounded-md py-1 text-[10px] font-semibold transition-colors ${
+                          getPercent(pos.address) === pct
+                            ? "bg-brand-primary/20 text-brand-primary"
+                            : "bg-surface-3 text-text-tertiary hover:text-text-secondary"
+                        }`}
+                      >
+                        {pct}%
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
             ))}

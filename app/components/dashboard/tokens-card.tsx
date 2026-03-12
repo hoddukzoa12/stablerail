@@ -13,10 +13,12 @@ const TOKEN_COLORS: Record<string, string> = {
   PYUSD: "#0033A0",
 };
 
+/** Floor truncation: never show more than actual balance */
 function formatBalance(baseUnits: bigint, decimals: number): string {
   const whole = Number(baseUnits) / 10 ** decimals;
   if (whole === 0) return "—";
-  return whole.toLocaleString("en-US", {
+  const floored = Math.floor(whole * 100) / 100;
+  return floored.toLocaleString("en-US", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
@@ -25,9 +27,10 @@ function formatBalance(baseUnits: bigint, decimals: number): string {
 function formatUsd(baseUnits: bigint, decimals: number): string {
   const value = Number(baseUnits) / 10 ** decimals;
   if (value === 0) return "$0.00";
-  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
-  if (value >= 1_000) return `$${(value / 1_000).toFixed(1)}K`;
-  return `$${value.toFixed(2)}`;
+  const floored = Math.floor(value * 100) / 100;
+  if (floored >= 1_000_000) return `$${Math.floor(floored / 10_000) / 100}M`;
+  if (floored >= 1_000) return `$${Math.floor(floored / 10) / 100}K`;
+  return `$${floored.toFixed(2)}`;
 }
 
 export function TokensCard({ balances }: TokensCardProps) {
@@ -45,8 +48,8 @@ export function TokensCard({ balances }: TokensCardProps) {
           {totalUsd === 0
             ? "$0.00"
             : totalUsd >= 1_000
-              ? `$${(totalUsd / 1_000).toFixed(1)}K`
-              : `$${totalUsd.toFixed(2)}`}
+              ? `$${(Math.floor(totalUsd / 10) / 100).toFixed(2)}K`
+              : `$${(Math.floor(totalUsd * 100) / 100).toFixed(2)}`}
         </span>
       </div>
 
