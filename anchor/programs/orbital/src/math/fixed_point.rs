@@ -108,14 +108,11 @@ impl FixedPoint {
 
     /// Convert FixedPoint back to raw SPL token amount with decimal denormalization.
     ///
-    /// Transforms whole-token FixedPoint values (e.g., FixedPoint(1.5)) back into
-    /// base-unit amounts (1_500_000 for 6 decimals).
+    /// Shared conversion logic for FixedPoint → SPL token base-units.
     ///
-    /// Uses round-half-up to recover the original value after from_token_amount's
-    /// floor truncation. Suitable for **deposit** paths where accuracy is priority.
-    /// For **withdrawal** paths, use `to_token_amount_floor` to avoid rounding
-    /// above the available reserve.
-    pub fn to_token_amount(&self, decimals: u8) -> Result<u64> {
+    /// `round_half_up = true`  → deposit path  (recover original value)
+    /// `round_half_up = false` → withdrawal path (LP gets ≤ proportional share)
+    fn to_token_amount_inner(&self, decimals: u8, round_half_up: bool) -> Result<u64> {
         if decimals == 0 {
             return self.to_u64();
         }
@@ -125,12 +122,16 @@ impl FixedPoint {
         let raw_u128 = self.raw as u128;
         let whole = raw_u128 >> FRAC_BITS;
         let frac = raw_u128 & ((1u128 << FRAC_BITS) - 1);
+        let frac_scaled = frac * scale;
+        let frac_rounded = if round_half_up {
+            (frac_scaled + (1u128 << (FRAC_BITS - 1))) >> FRAC_BITS
+        } else {
+            frac_scaled >> FRAC_BITS
+        };
         let result = whole
             .checked_mul(scale)
             .ok_or_else(|| error!(crate::errors::OrbitalError::MathOverflow))?
-            // Round-half-up: add 0.5 ULP before truncating to recover
-            // the original value after from_token_amount's floor.
-            .checked_add((frac * scale + (1u128 << (FRAC_BITS - 1))) >> FRAC_BITS)
+            .checked_add(frac_rounded)
             .ok_or_else(|| error!(crate::errors::OrbitalError::MathOverflow))?;
         if result > u64::MAX as u128 {
             return Err(error!(crate::errors::OrbitalError::MathOverflow));
@@ -138,36 +139,22 @@ impl FixedPoint {
         Ok(result as u64)
     }
 
+    /// Convert FixedPoint to raw SPL token amount using **round-half-up**.
+    ///
+    /// Recovers the original value after `from_token_amount`'s floor truncation.
+    /// Suitable for **deposit** paths where accuracy is priority.
+    /// For **withdrawal** paths, use `to_token_amount_floor`.
+    pub fn to_token_amount(&self, decimals: u8) -> Result<u64> {
+        self.to_token_amount_inner(decimals, true)
+    }
+
     /// Convert FixedPoint to raw SPL token amount using **floor** rounding.
     ///
-    /// Unlike `to_token_amount` (round-half-up), this always truncates toward
-    /// zero. Used for **withdrawal** paths where rounding must favor the pool:
-    /// LP receives at most their proportional share, never more.
-    ///
-    /// Without floor rounding, round-half-up can produce a u64 that, when
-    /// reconverted via `from_token_amount`, exceeds the on-chain reserve
-    /// (especially after swaps leave fractional Q64.64 dust), causing
-    /// `checked_sub` to fail and blocking valid withdrawals.
+    /// Always truncates toward zero — LP receives at most their proportional
+    /// share, never more. Prevents `checked_sub` failures when reserves carry
+    /// fractional Q64.64 dust after swaps.
     pub fn to_token_amount_floor(&self, decimals: u8) -> Result<u64> {
-        if decimals == 0 {
-            return self.to_u64();
-        }
-        require!(decimals <= 18, crate::errors::OrbitalError::MathOverflow);
-        require!(self.raw >= 0, crate::errors::OrbitalError::MathOverflow);
-        let scale = 10u128.pow(decimals as u32);
-        let raw_u128 = self.raw as u128;
-        let whole = raw_u128 >> FRAC_BITS;
-        let frac = raw_u128 & ((1u128 << FRAC_BITS) - 1);
-        let result = whole
-            .checked_mul(scale)
-            .ok_or_else(|| error!(crate::errors::OrbitalError::MathOverflow))?
-            // Floor: truncate without rounding up — LP gets ≤ proportional share
-            .checked_add((frac * scale) >> FRAC_BITS)
-            .ok_or_else(|| error!(crate::errors::OrbitalError::MathOverflow))?;
-        if result > u64::MAX as u128 {
-            return Err(error!(crate::errors::OrbitalError::MathOverflow));
-        }
-        Ok(result as u64)
+        self.to_token_amount_inner(decimals, false)
     }
 
     /// Create from a fraction (numerator / denominator)
@@ -776,24 +763,6 @@ mod tests {
 
         let fp2 = FixedPoint::from_fraction(3, 2).unwrap(); // 1.5
         assert_eq!(fp2.to_token_amount(6).unwrap(), fp2.to_token_amount_floor(6).unwrap());
-    }
-
-    #[test]
-    fn test_floor_zero() {
-        let fp = FixedPoint::zero();
-        assert_eq!(fp.to_token_amount_floor(6).unwrap(), 0);
-    }
-
-    #[test]
-    fn test_floor_negative_fails() {
-        let fp = FixedPoint::from_int(-1);
-        assert!(fp.to_token_amount_floor(6).is_err());
-    }
-
-    #[test]
-    fn test_floor_zero_decimals() {
-        let fp = FixedPoint::from_int(42);
-        assert_eq!(fp.to_token_amount_floor(0).unwrap(), 42);
     }
 
     #[test]

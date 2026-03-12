@@ -387,9 +387,9 @@ mod tests {
         // Inject half-base-unit dust: reserve = 99.9999995 tokens.
         // 0.5 base unit at 6 decimals = 0.0000005 tokens = ~9223372036855 in Q64.64 raw.
         let half_base_unit = FixedPoint::from_raw(9223372036855);
-        pool.reserves[0] = pool.reserves[0].checked_sub(half_base_unit).unwrap();
-        pool.reserves[1] = pool.reserves[1].checked_sub(half_base_unit).unwrap();
-        pool.reserves[2] = pool.reserves[2].checked_sub(half_base_unit).unwrap();
+        for i in 0..3 {
+            pool.reserves[i] = pool.reserves[i].checked_sub(half_base_unit).unwrap();
+        }
 
         // Recompute sphere for the dusty reserves
         crate::domain::core::recompute_sphere(&mut pool).unwrap();
