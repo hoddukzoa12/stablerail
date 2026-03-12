@@ -125,7 +125,8 @@ pub fn handler<'info>(
     )?;
 
     // ── SPL transfer OUT: vault_out → user_ata_out (pool PDA signs) ──
-    let amount_out_u64 = result.amount_out.to_token_amount(pool.token_decimals[token_out])?;
+    // Floor rounding: vault always has enough tokens. User receives ≤ computed amount.
+    let amount_out_u64 = result.amount_out.to_token_amount_floor(pool.token_decimals[token_out])?;
     require!(amount_out_u64 > 0, OrbitalError::SwapOutputTooSmall);
     let authority_key = pool.authority;
     let pool_bump = pool.bump;
@@ -147,20 +148,13 @@ pub fn handler<'info>(
         amount_out_u64,
     )?;
 
-    // ── Correct reserve for Q64.64 → u64 rounding drift ──
-    // The domain layer subtracts the full FixedPoint amount_out from reserves,
-    // but the SPL transfer moves a rounded u64 (round-half-up). Adjust
-    // reserves to match the actual vault balance, then recompute sphere
-    // so the invariant holds for subsequent swaps.
+    // ── Correct reserve for Q64.64 → u64 floor-rounding drift ──
+    // Floor always rounds down, so transferred_fp ≤ amount_out.
+    // Add the dust back to reserves so they match the actual vault balance.
     let transferred_fp = FixedPoint::from_token_amount(amount_out_u64, pool.token_decimals[token_out])?;
-    if result.amount_out.raw != transferred_fp.raw {
-        if result.amount_out.raw > transferred_fp.raw {
-            let dust = result.amount_out.checked_sub(transferred_fp)?;
-            pool.reserves[token_out] = pool.reserves[token_out].checked_add(dust)?;
-        } else {
-            let dust = transferred_fp.checked_sub(result.amount_out)?;
-            pool.reserves[token_out] = pool.reserves[token_out].checked_sub(dust)?;
-        }
+    if result.amount_out.raw > transferred_fp.raw {
+        let dust = result.amount_out.checked_sub(transferred_fp)?;
+        pool.reserves[token_out] = pool.reserves[token_out].checked_add(dust)?;
         recompute_sphere(pool)?;
         update_caches(pool)?;
     }
