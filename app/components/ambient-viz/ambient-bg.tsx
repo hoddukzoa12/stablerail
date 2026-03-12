@@ -18,12 +18,12 @@ export function AmbientBg() {
           width: 800,
           height: 400,
           borderRadius: "50%",
-          border: "1px solid transparent",
+          border: "2px solid transparent",
           backgroundImage:
             "linear-gradient(var(--surface-base), var(--surface-base)), linear-gradient(135deg, #9945FF, #14F195)",
           backgroundOrigin: "border-box",
           backgroundClip: "padding-box, border-box",
-          opacity: 0.05,
+          opacity: 0.18,
           animation: "orbital-rotate 60s linear infinite",
           transform: "rotate(-15deg)",
         }}
@@ -36,12 +36,12 @@ export function AmbientBg() {
           width: 650,
           height: 320,
           borderRadius: "50%",
-          border: "1px solid transparent",
+          border: "2px solid transparent",
           backgroundImage:
             "linear-gradient(var(--surface-base), var(--surface-base)), linear-gradient(135deg, #14F195, #9945FF)",
           backgroundOrigin: "border-box",
           backgroundClip: "padding-box, border-box",
-          opacity: 0.035,
+          opacity: 0.12,
           animation: "orbital-rotate 80s linear infinite reverse",
           transform: "rotate(10deg)",
         }}

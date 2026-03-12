@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { Badge } from "../ui/badge";
 import { POOL_PDA } from "../../lib/devnet-config";
 import type { PoolState } from "../../lib/stablerail-math";
@@ -15,18 +14,6 @@ function truncateAddress(address: string): string {
 }
 
 export function PoolHeader({ pool }: PoolHeaderProps) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(POOL_PDA);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Clipboard API may fail
-    }
-  };
-
   return (
     <div className="flex flex-wrap items-center gap-3">
       {/* Token icons cluster */}
@@ -60,14 +47,16 @@ export function PoolHeader({ pool }: PoolHeaderProps) {
         </Badge>
       </div>
 
-      {/* Address */}
-      <button
-        onClick={handleCopy}
-        className="font-mono text-xs text-text-tertiary transition-colors hover:text-text-secondary cursor-pointer"
-        title="Click to copy pool address"
+      {/* Address → Explorer link */}
+      <a
+        href={`https://explorer.solana.com/address/${POOL_PDA}?cluster=devnet`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="font-mono text-xs text-text-tertiary transition-colors hover:text-text-secondary"
+        title="View on Solana Explorer"
       >
-        {copied ? "Copied!" : truncateAddress(POOL_PDA)}
-      </button>
+        {truncateAddress(POOL_PDA)} ↗
+      </a>
     </div>
   );
 }
