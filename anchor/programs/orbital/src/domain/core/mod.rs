@@ -34,7 +34,7 @@ pub(crate) mod test_helpers {
             token_mints: [Pubkey::default(); MAX_ASSETS],
             token_vaults: [Pubkey::default(); MAX_ASSETS],
             vault_bumps: [0u8; MAX_ASSETS],
-            fee_rate_bps: 30,
+            fee_rate_bps: 1,
             total_interior_liquidity: FixedPoint::zero(),
             total_boundary_liquidity: FixedPoint::zero(),
             alpha_cache: FixedPoint::zero(),

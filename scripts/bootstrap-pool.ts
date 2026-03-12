@@ -46,7 +46,7 @@ const PROGRAM_ID = new PublicKey(
 const DEVNET_RPC = "https://api.devnet.solana.com";
 
 const N_ASSETS = 3;
-const FEE_RATE_BPS = 30;
+const FEE_RATE_BPS = 1;
 const DECIMALS = 6;
 // 100 tokens at 6 decimals — modest initial liquidity for devnet testing
 const INITIAL_DEPOSIT_PER_ASSET = BigInt(100_000_000);
