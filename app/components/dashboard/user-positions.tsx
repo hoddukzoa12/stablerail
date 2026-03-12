@@ -3,6 +3,13 @@
 import { useState } from "react";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
+import { PercentageSelector } from "../ui/percentage-selector";
+import { TxNotification } from "../ui/tx-notification";
+import {
+  truncateAddress,
+  explorerUrl,
+  computePartialLiquidity,
+} from "../../lib/format-utils";
 import { useRemoveLiquidity } from "../../hooks/useRemoveLiquidity";
 import type { UserPosition } from "../../hooks/useUserPositions";
 import type { Transaction } from "../../hooks/useTransactionHistory";
@@ -13,9 +20,7 @@ interface UserPositionsProps {
   positions: UserPosition[];
   isLoading: boolean;
   onRemoveSuccess: () => void;
-  /** Transaction history data */
   transactions: Transaction[];
-  /** Whether transaction history is loading */
   isLoadingTransactions: boolean;
 }
 
@@ -26,11 +31,6 @@ function formatDate(unixSeconds: number): string {
     day: "numeric",
     year: "numeric",
   });
-}
-
-function truncateAddress(address: string): string {
-  if (address.length <= 10) return address;
-  return `${address.slice(0, 4)}...${address.slice(-4)}`;
 }
 
 /** Icon + color per transaction type */
@@ -63,15 +63,12 @@ export function UserPositions({
   const [aggregateRemoving, setAggregateRemoving] = useState(false);
   const [removeProgress, setRemoveProgress] = useState<string | null>(null);
 
-  // ── Per-position state (used in expanded view) ──
+  // ── Per-position state ──
   const [removePercent, setRemovePercent] = useState<Record<string, number>>(
     {},
   );
 
-  // Filter out fully withdrawn (liquidity = 0) positions
   const activePositions = positions.filter((p) => p.liquidityRaw > 0n);
-
-  // Aggregate totals
   const totalLiquidity = activePositions.reduce(
     (sum, p) => sum + p.liquidityDisplay,
     0,
@@ -79,7 +76,7 @@ export function UserPositions({
 
   const getPercent = (address: string) => removePercent[address] ?? 100;
 
-  // ── Aggregate remove: apply same % to all positions sequentially ──
+  // ── Aggregate remove ──
   const handleAggregateRemove = async () => {
     setAggregateRemoving(true);
     setTxResult(null);
@@ -89,19 +86,14 @@ export function UserPositions({
     for (let i = 0; i < total; i++) {
       setRemoveProgress(`Removing ${i + 1}/${total}...`);
       const pos = activePositions[i];
-      const partialRaw =
-        aggregatePercent === 100
-          ? pos.liquidityRaw
-          : (pos.liquidityRaw * BigInt(aggregatePercent)) / 100n;
-
       try {
         const sig = await execute({
           positionAddress: pos.address,
-          liquidityRaw: partialRaw,
+          liquidityRaw: computePartialLiquidity(pos.liquidityRaw, aggregatePercent),
         });
         lastSig = sig;
       } catch {
-        break; // stop on first failure — error tracked in hook
+        break;
       }
     }
 
@@ -111,21 +103,18 @@ export function UserPositions({
     onRemoveSuccess();
   };
 
-  // ── Individual position remove (expanded view) ──
+  // ── Individual remove ──
   const handleRemove = async (position: UserPosition) => {
     setRemovingAddress(position.address);
     setTxResult(null);
 
-    const pct = getPercent(position.address);
-    const partialRaw =
-      pct === 100
-        ? position.liquidityRaw
-        : (position.liquidityRaw * BigInt(pct)) / 100n;
-
     try {
       const sig = await execute({
         positionAddress: position.address,
-        liquidityRaw: partialRaw,
+        liquidityRaw: computePartialLiquidity(
+          position.liquidityRaw,
+          getPercent(position.address),
+        ),
       });
       setTxResult(sig);
       onRemoveSuccess();
@@ -214,41 +203,10 @@ export function UserPositions({
 
                 {/* Aggregate percentage selector + remove button */}
                 <div className="mt-3 space-y-2">
-                  {/* Preset buttons + custom input row */}
-                  <div className="flex items-center gap-1.5">
-                    {[25, 50, 75, 100].map((pct) => (
-                      <button
-                        key={pct}
-                        type="button"
-                        onClick={() => setAggregatePercent(pct)}
-                        className={`flex-1 rounded-md py-1.5 text-[11px] font-semibold transition-colors ${
-                          aggregatePercent === pct
-                            ? "bg-brand-primary/20 text-brand-primary"
-                            : "bg-surface-3 text-text-tertiary hover:text-text-secondary"
-                        }`}
-                      >
-                        {pct}%
-                      </button>
-                    ))}
-                    {/* Custom percentage input */}
-                    <div className="relative flex w-16 shrink-0 items-center">
-                      <input
-                        type="number"
-                        min={1}
-                        max={100}
-                        value={aggregatePercent}
-                        onChange={(e) => {
-                          const v = Math.max(1, Math.min(100, Number(e.target.value) || 1));
-                          setAggregatePercent(v);
-                        }}
-                        className="w-full rounded-md bg-surface-3 py-1.5 pl-2 pr-5 font-mono text-[11px] font-semibold text-text-primary outline-none focus:ring-1 focus:ring-brand-primary/40"
-                      />
-                      <span className="pointer-events-none absolute right-1.5 text-[10px] text-text-tertiary">
-                        %
-                      </span>
-                    </div>
-                  </div>
-                  {/* Remove button */}
+                  <PercentageSelector
+                    value={aggregatePercent}
+                    onChange={setAggregatePercent}
+                  />
                   <Button
                     variant="secondary"
                     size="sm"
@@ -297,7 +255,7 @@ export function UserPositions({
                             Position #{activePositions.length - i}
                           </p>
                           <a
-                            href={`https://explorer.solana.com/address/${pos.address}?cluster=devnet`}
+                            href={explorerUrl("address", pos.address)}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="mt-0.5 font-mono text-[11px] text-text-tertiary underline-offset-2 hover:text-accent-blue hover:underline"
@@ -333,45 +291,17 @@ export function UserPositions({
                         </div>
 
                         {/* Per-position percentage selector */}
-                        <div className="mt-1.5 flex items-center gap-1">
-                          {[25, 50, 75, 100].map((pct) => (
-                            <button
-                              key={pct}
-                              type="button"
-                              onClick={() =>
-                                setRemovePercent((prev) => ({
-                                  ...prev,
-                                  [pos.address]: pct,
-                                }))
-                              }
-                              className={`flex-1 rounded-md py-0.5 text-[10px] font-semibold transition-colors ${
-                                getPercent(pos.address) === pct
-                                  ? "bg-brand-primary/20 text-brand-primary"
-                                  : "bg-surface-3 text-text-tertiary hover:text-text-secondary"
-                              }`}
-                            >
-                              {pct}%
-                            </button>
-                          ))}
-                          <div className="relative flex w-14 shrink-0 items-center">
-                            <input
-                              type="number"
-                              min={1}
-                              max={100}
-                              value={getPercent(pos.address)}
-                              onChange={(e) => {
-                                const v = Math.max(1, Math.min(100, Number(e.target.value) || 1));
-                                setRemovePercent((prev) => ({
-                                  ...prev,
-                                  [pos.address]: v,
-                                }));
-                              }}
-                              className="w-full rounded-md bg-surface-3 py-0.5 pl-1.5 pr-4 font-mono text-[10px] font-semibold text-text-primary outline-none focus:ring-1 focus:ring-brand-primary/40"
-                            />
-                            <span className="pointer-events-none absolute right-1 text-[9px] text-text-tertiary">
-                              %
-                            </span>
-                          </div>
+                        <div className="mt-1.5">
+                          <PercentageSelector
+                            compact
+                            value={getPercent(pos.address)}
+                            onChange={(pct) =>
+                              setRemovePercent((prev) => ({
+                                ...prev,
+                                [pos.address]: pct,
+                              }))
+                            }
+                          />
                         </div>
                       </div>
                     </div>
@@ -381,27 +311,11 @@ export function UserPositions({
             </div>
           )}
 
-          {/* Error */}
-          {error && (
-            <div className="mt-2 rounded-lg bg-error/10 px-3 py-2 text-center text-xs text-error">
-              {error.message}
-            </div>
-          )}
-
-          {/* Success */}
-          {txResult && (
-            <div className="mt-2 rounded-lg bg-success/10 px-3 py-2 text-center text-xs text-success">
-              Liquidity removed!{" "}
-              <a
-                href={`https://explorer.solana.com/tx/${txResult}?cluster=devnet`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline underline-offset-2"
-              >
-                View on Explorer
-              </a>
-            </div>
-          )}
+          <TxNotification
+            error={error}
+            txSignature={txResult}
+            successLabel="Liquidity removed!"
+          />
         </div>
       )}
 
@@ -444,7 +358,7 @@ export function UserPositions({
 
                   <div className="mt-1.5 flex items-center justify-between">
                     <a
-                      href={`https://explorer.solana.com/tx/${tx.signature}?cluster=devnet`}
+                      href={explorerUrl("tx", tx.signature)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="font-mono text-xs text-text-tertiary underline-offset-2 hover:text-accent-blue hover:underline"

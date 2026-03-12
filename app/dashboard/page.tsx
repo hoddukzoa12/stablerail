@@ -35,21 +35,18 @@ export default function DashboardPage() {
 
   const isConnected = status === "connected";
 
-  /** Refresh all data after a tx succeeds.
-   *  Wait ~2s for RPC to reflect the confirmed transaction. */
-  const handleLiquiditySuccess = () => {
-    // Immediate refresh (catches fast RPC nodes)
+  /** Refresh all hook data (pool, balances, positions, transactions). */
+  const refreshAll = () => {
     refreshPool();
     refreshBalances();
     refreshPositions();
     refreshTransactions();
-    // Delayed refresh (catches slower propagation)
-    setTimeout(() => {
-      refreshPool();
-      refreshBalances();
-      refreshPositions();
-      refreshTransactions();
-    }, 2000);
+  };
+
+  /** Refresh immediately + after 2s delay for RPC propagation. */
+  const handleLiquiditySuccess = () => {
+    refreshAll();
+    setTimeout(refreshAll, 2000);
   };
 
   const openLiquidityModal = () => setLiquidityModalOpen(true);

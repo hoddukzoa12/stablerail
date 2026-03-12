@@ -2,15 +2,12 @@
 
 import { Badge } from "../ui/badge";
 import { POOL_PDA } from "../../lib/devnet-config";
+import { TOKENS } from "../../lib/tokens";
+import { truncateAddress, explorerUrl } from "../../lib/format-utils";
 import type { PoolState } from "../../lib/stablerail-math";
 
 interface PoolHeaderProps {
   pool: PoolState;
-}
-
-function truncateAddress(address: string): string {
-  if (address.length <= 12) return address;
-  return `${address.slice(0, 6)}...${address.slice(-4)}`;
 }
 
 export function PoolHeader({ pool }: PoolHeaderProps) {
@@ -18,20 +15,24 @@ export function PoolHeader({ pool }: PoolHeaderProps) {
     <div className="flex flex-wrap items-center gap-3">
       {/* Token icons cluster */}
       <div className="flex -space-x-2">
-        <div className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-surface-base bg-[#2775CA]">
-          <span className="text-xs font-bold text-white">U</span>
-        </div>
-        <div className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-surface-base bg-[#26A17B]">
-          <span className="text-xs font-bold text-white">T</span>
-        </div>
-        <div className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-surface-base bg-[#0033A0]">
-          <span className="text-xs font-bold text-white">P</span>
-        </div>
+        {TOKENS.slice(0, pool.nAssets).map((token) => (
+          <div
+            key={token.symbol}
+            className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-surface-base"
+            style={{ backgroundColor: token.colorHex }}
+          >
+            <span className="text-xs font-bold text-white">
+              {token.symbol.charAt(0)}
+            </span>
+          </div>
+        ))}
       </div>
 
       {/* Pool name */}
       <h1 className="text-xl font-bold text-text-primary">
-        USDC / USDT / PYUSD
+        {TOKENS.slice(0, pool.nAssets)
+          .map((t) => t.symbol)
+          .join(" / ")}
       </h1>
 
       {/* Badges */}
@@ -49,13 +50,13 @@ export function PoolHeader({ pool }: PoolHeaderProps) {
 
       {/* Address → Explorer link */}
       <a
-        href={`https://explorer.solana.com/address/${POOL_PDA}?cluster=devnet`}
+        href={explorerUrl("address", POOL_PDA)}
         target="_blank"
         rel="noopener noreferrer"
         className="font-mono text-xs text-text-tertiary transition-colors hover:text-text-secondary"
         title="View on Solana Explorer"
       >
-        {truncateAddress(POOL_PDA)} ↗
+        {truncateAddress(POOL_PDA, 6, 4)} ↗
       </a>
     </div>
   );

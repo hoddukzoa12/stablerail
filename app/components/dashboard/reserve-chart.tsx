@@ -3,34 +3,15 @@
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import type { PoolState } from "../../lib/stablerail-math";
 import { TOKENS } from "../../lib/tokens";
+import { q6464ToNumber, formatUsd } from "../../lib/format-utils";
 import { Card } from "../ui/card";
 
 interface ReserveChartProps {
   pool: PoolState;
 }
 
-/** Token colors — resolved from CSS vars for recharts (needs raw hex) */
-const TOKEN_COLORS = ["#2775CA", "#26A17B", "#0033A0"];
-
-/** Convert Q64.64 reserve to human-readable token amount.
- *  On-chain reserves are already decimal-normalized via from_token_amount(),
- *  so raw / Q64 gives the whole-token amount directly (e.g., 102 USDC). */
-function reserveToDisplay(raw: bigint): number {
-  const Q64 = 1n << 64n;
-  const intPart = Number(raw / Q64);
-  const fracPart = Number(raw % Q64) / Number(Q64);
-  return intPart + fracPart;
-}
-
-function formatUsd(value: number): string {
-  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(2)}M`;
-  if (value >= 1_000) return `$${(value / 1_000).toFixed(2)}K`;
-  return `$${value.toFixed(2)}`;
-}
-
 export function ReserveChart({ pool }: ReserveChartProps) {
-  const reserves = pool.reserves.map((r) => reserveToDisplay(r.raw));
-
+  const reserves = pool.reserves.map((r) => q6464ToNumber(r.raw));
   const total = reserves.reduce((a, b) => a + b, 0);
   const idealPct = 100 / pool.nAssets;
 
@@ -38,7 +19,7 @@ export function ReserveChart({ pool }: ReserveChartProps) {
     name: token.symbol,
     value: reserves[i],
     pct: total > 0 ? (reserves[i] / total) * 100 : 100 / pool.nAssets,
-    color: TOKEN_COLORS[i],
+    color: token.colorHex,
   }));
 
   return (
@@ -60,7 +41,7 @@ export function ReserveChart({ pool }: ReserveChartProps) {
                 animationBegin={0}
                 animationDuration={800}
               >
-                {chartData.map((entry, i) => (
+                {chartData.map((entry) => (
                   <Cell key={entry.name} fill={entry.color} />
                 ))}
               </Pie>
@@ -105,7 +86,7 @@ export function ReserveChart({ pool }: ReserveChartProps) {
               <div className="flex items-center gap-2.5">
                 <span
                   className="h-3 w-3 rounded-full"
-                  style={{ backgroundColor: TOKEN_COLORS[i] }}
+                  style={{ backgroundColor: token.colorHex }}
                 />
                 <span className="text-sm font-medium text-text-primary">
                   {token.symbol}

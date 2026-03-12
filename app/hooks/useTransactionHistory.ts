@@ -69,20 +69,6 @@ export interface Transaction {
   status: "success" | "failed";
 }
 
-/**
- * Match the first 8 bytes of instruction data against known discriminators.
- */
-function matchDiscriminator(dataBase64: string): TransactionType {
-  try {
-    const bytes = Uint8Array.from(atob(dataBase64), (c) => c.charCodeAt(0));
-    if (bytes.length < 8) return "Unknown";
-    const hex = uint8ToHex(bytes.slice(0, 8));
-    return DISCRIMINATORS[hex] ?? "Unknown";
-  } catch {
-    return "Unknown";
-  }
-}
-
 export function useTransactionHistory() {
   const { wallet } = useWalletConnection();
   const [transactions, setTransactions] = useState<Transaction[]>([]);

@@ -2,7 +2,9 @@
 
 import { useState, useCallback, useMemo } from "react";
 import { Button } from "../ui/button";
+import { TxNotification } from "../ui/tx-notification";
 import { TOKENS } from "../../lib/tokens";
+import { q6464ToNumber, formatBalance } from "../../lib/format-utils";
 import { useAddLiquidity } from "../../hooks/useAddLiquidity";
 import type { PoolState } from "../../lib/stablerail-math";
 
@@ -12,20 +14,27 @@ interface AddLiquidityFormProps {
   onSuccess: () => void;
 }
 
-/** Format balance with floor truncation (DeFi standard: never show more than you have) */
-function formatBalance(baseUnits: bigint, decimals: number): string {
-  const whole = Number(baseUnits) / 10 ** decimals;
-  const floored = Math.floor(whole * 100) / 100;
-  return floored.toLocaleString("en-US", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+/** Get token balance as a number (whole-token units). */
+function balanceToNumber(
+  balances: Record<string, bigint>,
+  symbol: string,
+  decimals: number,
+): number {
+  return Number(balances[symbol] ?? 0n) / 10 ** decimals;
 }
 
-/** Convert Q64.64 value to number (on-chain reserves are decimal-normalized) */
-function q6464ToNumber(raw: bigint): number {
-  const Q64 = 1n << 64n;
-  return Number(raw / Q64) + Number(raw % Q64) / Number(Q64);
+/** Determine the submit button label based on form state. */
+function getSubmitLabel(
+  isSending: boolean,
+  hasAnyInput: boolean,
+  allPositive: boolean,
+  exceedsBalance: boolean,
+): string {
+  if (isSending) return "Adding Liquidity...";
+  if (!hasAnyInput) return "Enter amounts";
+  if (!allPositive) return "All tokens required";
+  if (exceedsBalance) return "Insufficient balance";
+  return "Add Liquidity";
 }
 
 export function AddLiquidityForm({
@@ -38,13 +47,11 @@ export function AddLiquidityForm({
   const [txResult, setTxResult] = useState<string | null>(null);
   const { execute, isSending, error } = useAddLiquidity();
 
-  // Current reserve ratios (decimal-normalized, e.g. [102, 102, 101])
   const reserves = useMemo(
     () => pool.reserves.map((r) => q6464ToNumber(r.raw)),
     [pool.reserves],
   );
 
-  /** Free-form single field update (default behavior) */
   const updateAmount = (index: number, value: string) => {
     if (!/^[0-9]*\.?[0-9]*$/.test(value)) return;
     setAmounts((prev) => {
@@ -54,19 +61,14 @@ export function AddLiquidityForm({
     });
   };
 
-  /** MAX button: set that token to its full balance (floor to 2 decimals) */
   const handleMax = (index: number) => {
     const token = tokens[index];
-    const bal = balances[token.symbol] ?? 0n;
-    const raw = Number(bal) / 10 ** token.decimals;
+    const raw = balanceToNumber(balances, token.symbol, token.decimals);
     if (raw <= 0) return;
-    const floored = Math.floor(raw * 100) / 100;
-    updateAmount(index, floored.toFixed(2));
+    updateAmount(index, (Math.floor(raw * 100) / 100).toFixed(2));
   };
 
-  /** Proportional fill: user picks one token, others auto-calculated from reserve ratio */
   const handleProportionalFill = () => {
-    // Find the first non-empty input as the anchor
     const anchorIdx = amounts.findIndex((a) => parseFloat(a || "0") > 0);
     if (anchorIdx === -1) return;
 
@@ -75,20 +77,15 @@ export function AddLiquidityForm({
 
     const ratio = anchorAmount / reserves[anchorIdx];
 
-    // Calculate proportional, capped by balances
-    const proportional = tokens.map((t, i) => {
-      if (i === anchorIdx) return anchorAmount;
-      return reserves[i] * ratio;
-    });
+    const proportional = tokens.map((_, i) =>
+      i === anchorIdx ? anchorAmount : reserves[i] * ratio,
+    );
 
-    // Check if any proportional amount exceeds balance, cap if needed
     const balanceRatios = proportional.map((p, i) => {
-      const bal =
-        Number(balances[tokens[i].symbol] ?? 0n) / 10 ** tokens[i].decimals;
+      const bal = balanceToNumber(balances, tokens[i].symbol, tokens[i].decimals);
       return p > 0 ? bal / p : Infinity;
     });
-    const limitRatio = Math.min(...balanceRatios);
-    const scale = limitRatio < 1 ? limitRatio : 1;
+    const scale = Math.min(1, Math.min(...balanceRatios));
 
     setAmounts(
       proportional.map((p) => (Math.floor(p * scale * 100) / 100).toFixed(2)),
@@ -103,7 +100,6 @@ export function AddLiquidityForm({
       return BigInt(Math.floor(val * 10 ** token.decimals));
     });
 
-    // All amounts must be > 0 (on-chain requirement)
     if (baseAmounts.some((a) => a === 0n)) return;
 
     try {
@@ -123,8 +119,7 @@ export function AddLiquidityForm({
   const hasZero = hasAnyInput && !allPositive;
 
   const exceedsBalance = tokens.some((token, i) => {
-    const bal = Number(balances[token.symbol] ?? 0n) / 10 ** token.decimals;
-    return parsedAmounts[i] > bal;
+    return parsedAmounts[i] > balanceToNumber(balances, token.symbol, token.decimals);
   });
 
   return (
@@ -137,8 +132,7 @@ export function AddLiquidityForm({
 
       <div className="space-y-3">
         {tokens.map((token, i) => {
-          const bal =
-            Number(balances[token.symbol] ?? 0n) / 10 ** token.decimals;
+          const bal = balanceToNumber(balances, token.symbol, token.decimals);
           const isOver = parsedAmounts[i] > bal;
           const isEmpty = hasAnyInput && parsedAmounts[i] === 0;
 
@@ -157,7 +151,7 @@ export function AddLiquidityForm({
                 <div className="flex items-center gap-2">
                   <span
                     className="h-2 w-2 rounded-full"
-                    style={{ backgroundColor: token.color }}
+                    style={{ backgroundColor: token.colorHex }}
                   />
                   <span className="text-xs font-medium text-text-primary">
                     {token.symbol}
@@ -168,6 +162,7 @@ export function AddLiquidityForm({
                   {formatBalance(
                     balances[token.symbol] ?? 0n,
                     token.decimals,
+                    "0.00",
                   )}
                 </span>
               </div>
@@ -192,11 +187,8 @@ export function AddLiquidityForm({
                 )}
               </div>
 
-              {/* Per-field validation */}
               {isOver && (
-                <p className="mt-1 text-[10px] text-error">
-                  Exceeds balance
-                </p>
+                <p className="mt-1 text-[10px] text-error">Exceeds balance</p>
               )}
               {isEmpty && (
                 <p className="mt-1 text-[10px] text-warning">
@@ -220,14 +212,12 @@ export function AddLiquidityForm({
         </button>
       </div>
 
-      {/* Validation message */}
       {hasZero && (
         <div className="mt-2 rounded-lg bg-warning/10 px-3 py-2 text-center text-[11px] text-warning">
           Each token needs at least a minimal deposit (can be asymmetric).
         </div>
       )}
 
-      {/* Submit */}
       <Button
         variant="gradient"
         size="lg"
@@ -235,38 +225,14 @@ export function AddLiquidityForm({
         disabled={!allPositive || exceedsBalance || isSending}
         onClick={handleSubmit}
       >
-        {isSending
-          ? "Adding Liquidity..."
-          : !hasAnyInput
-            ? "Enter amounts"
-            : !allPositive
-              ? "All tokens required"
-              : exceedsBalance
-                ? "Insufficient balance"
-                : "Add Liquidity"}
+        {getSubmitLabel(isSending, hasAnyInput, allPositive, exceedsBalance)}
       </Button>
 
-      {/* Error */}
-      {error && (
-        <div className="mt-2 rounded-lg bg-error/10 px-3 py-2 text-center text-xs text-error">
-          {error.message}
-        </div>
-      )}
-
-      {/* Success */}
-      {txResult && (
-        <div className="mt-2 rounded-lg bg-success/10 px-3 py-2 text-center text-xs text-success">
-          Liquidity added!{" "}
-          <a
-            href={`https://explorer.solana.com/tx/${txResult}?cluster=devnet`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="underline underline-offset-2"
-          >
-            View on Explorer
-          </a>
-        </div>
-      )}
+      <TxNotification
+        error={error}
+        txSignature={txResult}
+        successLabel="Liquidity added!"
+      />
     </div>
   );
 }

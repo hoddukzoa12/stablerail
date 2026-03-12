@@ -22,6 +22,8 @@ export interface TokenInfo {
   index: number;
   /** CSS color variable for UI indicators */
   color: string;
+  /** Raw hex color for libraries that can't use CSS vars (e.g. recharts) */
+  colorHex: string;
   /** Path to token icon SVG */
   icon: string;
 }
@@ -41,6 +43,7 @@ export const TOKENS: readonly TokenInfo[] = [
     decimals: DEVNET_CONFIG.params.decimals,
     index: 0,
     color: "var(--token-usdc)",
+    colorHex: "#2775CA",
     icon: "/tokens/usdc.svg",
   },
   {
@@ -51,6 +54,7 @@ export const TOKENS: readonly TokenInfo[] = [
     decimals: DEVNET_CONFIG.params.decimals,
     index: 1,
     color: "var(--token-usdt)",
+    colorHex: "#26A17B",
     icon: "/tokens/usdt.svg",
   },
   {
@@ -61,6 +65,7 @@ export const TOKENS: readonly TokenInfo[] = [
     decimals: DEVNET_CONFIG.params.decimals,
     index: 2,
     color: "var(--token-pyusd)",
+    colorHex: "#0033A0",
     icon: "/tokens/pyusd.svg",
   },
 ] as const;
