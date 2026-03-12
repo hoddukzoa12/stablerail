@@ -1,61 +1,191 @@
 @import "tailwindcss";
 
+/* ============================================
+   Orbital Settlement Protocol — Design System
+   Dark-only "Celestial Finance" theme
+   ============================================ */
+
 :root {
-  --background: #ffffff;
-  --foreground: oklch(0.145 0 0); /* deep neutral */
-  --border-strong: oklch(0.839 0.0187 78.23);
-  --border-low: oklch(0.927 0.0122 96.43);
-  --accent: oklch(0 0 0);
-  --muted: #3a3a3a; /* darker for better light-mode contrast */
-  --cream: oklch(0.9553 0.0029 84.56);
-  --card: #ffffff;
-  --card-foreground: oklch(0.145 0 0);
-  --radius: 0.625rem;
-  --font-sans: var(--font-inter), system-ui, sans-serif;
-  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  /* Brand */
+  --brand-primary: #9945FF;
+  --brand-primary-hover: #AD6AFF;
+  --brand-primary-pressed: #7C2FE6;
+  --brand-secondary: #14F195;
+  --brand-gradient: linear-gradient(135deg, #9945FF, #14F195);
+
+  /* Surfaces */
+  --surface-base: #0B0B0F;
+  --surface-1: #111116;
+  --surface-2: #1A1A22;
+  --surface-3: #22222E;
+
+  /* Borders */
+  --border-default: #1E1E2A;
+  --border-subtle: #16161F;
+
+  /* Text */
+  --text-primary: #E4E4E7;
+  --text-secondary: #A1A1AA;
+  --text-tertiary: #71717A;
+
+  /* Semantic */
+  --success: #14F195;
+  --error: #FF4D4D;
+  --warning: #FFB020;
+  --info: #38BDF8;
+
+  /* Token indicator colors */
+  --token-usdc: #2775CA;
+  --token-usdt: #26A17B;
+  --token-pyusd: #0033A0;
+
+  /* Typography */
+  --font-sans: var(--font-inter), system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, monospace;
+
+  /* Animation */
+  --duration-fast: 100ms;
+  --duration-normal: 200ms;
+  --duration-slow: 300ms;
+  --easing-default: cubic-bezier(0.4, 0, 0.2, 1);
+  --easing-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: oklch(0.145 0 0);
-    --foreground: oklch(0.985 0 0);
-    --border-strong: oklch(1 0 0 / 0.12);
-    --border-low: oklch(1 0 0 / 0.08);
-    --accent: oklch(0.922 0 0);
-    --muted: oklch(0.75 0.01 260); /* brighten muted text in dark mode */
-    --cream: oklch(0.22 0.009 70.82);
-    --card: oklch(0.205 0 0);
-    --card-foreground: oklch(0.985 0 0);
-  }
-}
-
+/* Tailwind v4 theme tokens */
 @theme inline {
-  --color-background: var(--background);
-  --color-bg1: var(--background);
-  --color-foreground: var(--foreground);
-  --color-cream: var(--cream);
-  --color-border: var(--border-strong);
-  --color-border-strong: var(--border-strong);
-  --color-border-low: var(--border-low);
-  --color-primary: var(--accent);
-  --color-muted: var(--muted);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
+  /* Brand colors */
+  --color-brand-primary: var(--brand-primary);
+  --color-brand-primary-hover: var(--brand-primary-hover);
+  --color-brand-primary-pressed: var(--brand-primary-pressed);
+  --color-brand-secondary: var(--brand-secondary);
+
+  /* Surfaces */
+  --color-surface-base: var(--surface-base);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+
+  /* Borders */
+  --color-border-default: var(--border-default);
+  --color-border-subtle: var(--border-subtle);
+
+  /* Text */
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-tertiary: var(--text-tertiary);
+
+  /* Semantic */
+  --color-success: var(--success);
+  --color-error: var(--error);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
+
+  /* Token indicators */
+  --color-token-usdc: var(--token-usdc);
+  --color-token-usdt: var(--token-usdt);
+  --color-token-pyusd: var(--token-pyusd);
+
+  /* Typography */
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+
+  --text-display: 36px;
+  --text-heading-1: 28px;
+  --text-heading-2: 22px;
+  --text-heading-3: 18px;
+  --text-body-lg: 16px;
+  --text-body: 14px;
+  --text-body-sm: 13px;
+  --text-caption: 12px;
+  --text-number-lg: 28px;
+  --text-number: 16px;
+
+  /* Spacing (4px base) */
+  --spacing-1: 4px;
+  --spacing-2: 8px;
+  --spacing-3: 12px;
+  --spacing-4: 16px;
+  --spacing-5: 20px;
+  --spacing-6: 24px;
+  --spacing-8: 32px;
+
+  /* Border radius */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+  --radius-full: 9999px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --shadow-glow: 0 0 20px rgba(153, 69, 255, 0.15);
 }
 
+/* ============================================
+   Base layer
+   ============================================ */
 @layer base {
   * {
-    @apply border-border outline-transparent;
+    border-color: var(--border-default);
   }
 
   body {
-    @apply bg-bg1 text-foreground antialiased;
+    background-color: var(--surface-base);
+    color: var(--text-primary);
     font-family: var(--font-sans);
-    color-scheme: light dark;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Force dark color scheme */
+  html {
+    color-scheme: dark;
+  }
+}
+
+/* ============================================
+   Utility classes
+   ============================================ */
+@layer utilities {
+  /* Glassmorphism panel */
+  .glass-panel {
+    background: rgba(17, 17, 22, 0.80);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  /* Gradient border via ::before pseudo-element */
+  .gradient-border {
+    position: relative;
+    background: var(--surface-1);
+  }
+
+  .gradient-border::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    padding: 1px;
+    border-radius: inherit;
+    background: linear-gradient(135deg, rgba(153, 69, 255, 0.4), rgba(20, 241, 149, 0.4));
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+}
+
+/* ============================================
+   Orbital ring background animation
+   ============================================ */
+@keyframes orbital-rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
   }
 }
