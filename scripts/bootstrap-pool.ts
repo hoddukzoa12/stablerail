@@ -397,7 +397,12 @@ async function main() {
     }
   }
 
-  // 9. Write config
+  // 9. Read on-chain pool state for authoritative config values
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const poolState = await (program.account as any).poolState.fetch(poolPda);
+  const onChainFeeRateBps = (poolState.feeRateBps as number);
+
+  // 10. Write config
   const config = {
     network: "devnet",
     rpcUrl: DEVNET_RPC,
@@ -414,7 +419,7 @@ async function main() {
     ),
     params: {
       nAssets: N_ASSETS,
-      feeRateBps: FEE_RATE_BPS,
+      feeRateBps: onChainFeeRateBps,
       decimals: DECIMALS,
       initialDepositPerAsset: INITIAL_DEPOSIT_PER_ASSET.toString(),
       maxTradeAmount: MAX_TRADE_AMOUNT.toString(),
