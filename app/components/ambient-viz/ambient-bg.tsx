@@ -1,11 +1,11 @@
 /**
- * OrbitalBg — Decorative background ring animation.
+ * AmbientBg — Decorative background ring animation.
  * A large, thin elliptical ring that slowly rotates, giving a
- * subtle "planetary ring" feel to the Celestial Finance theme.
+ * subtle "planetary ring" feel to the StableRail theme.
  *
  * Pure CSS, no JS interactivity. Fixed position, pointer-events-none.
  */
-export function OrbitalBg() {
+export function AmbientBg() {
   return (
     <div
       aria-hidden="true"

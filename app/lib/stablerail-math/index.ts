@@ -1,5 +1,5 @@
 /**
- * Orbital Math SDK — Off-chain TypeScript mirror of on-chain Q64.64 math.
+ * StableRail Math SDK — Off-chain TypeScript mirror of on-chain Q64.64 math.
  *
  * This SDK provides BigInt-based fixed-point arithmetic that produces
  * results identical to the Rust on-chain program, enabling the frontend
@@ -8,7 +8,7 @@
  *
  * @example
  * ```ts
- * import { Q6464, computeSwapQuote, type PoolState } from '@/lib/orbital-math';
+ * import { Q6464, computeSwapQuote, type PoolState } from '@/lib/stablerail-math';
  *
  * const pool: PoolState = { ... }; // from deserialized Anchor account
  * const amountIn = Q6464.fromTokenAmount(1_000_000n, 6); // 1 USDC

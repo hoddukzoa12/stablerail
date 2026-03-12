@@ -3,7 +3,7 @@ import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./components/providers";
 import { Navbar } from "./components/layout/navbar";
-import { OrbitalBg } from "./components/orbital-viz/orbital-bg";
+import { AmbientBg } from "./components/ambient-viz/ambient-bg";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -18,7 +18,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Orbital",
+  title: "StableRail",
   description: "Multi-asset stablecoin AMM on Solana",
   icons: {
     icon: "/favicon-32x32.png",
@@ -39,7 +39,7 @@ export default function RootLayout({
         className={`${inter.variable} ${jetbrainsMono.variable} bg-surface-base text-text-primary antialiased`}
       >
         <Providers>
-          <OrbitalBg />
+          <AmbientBg />
           <Navbar />
           <main className="relative z-10 pt-16">{children}</main>
         </Providers>

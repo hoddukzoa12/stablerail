@@ -6,7 +6,7 @@
  *
  * Where r = (r, r, ..., r) is the radius vector and x = (x_0, x_1, ..., x_{n-1})
  * is the reserve vector. The sphere surface defines the set of valid reserve
- * states for the Orbital AMM.
+ * states for the StableRail AMM.
  */
 
 import { Q6464 } from './q64-64';

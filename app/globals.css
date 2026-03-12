@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /* ============================================
-   Orbital Settlement Protocol — Design System
+   StableRail — Design System
    Dark-only "Celestial Finance" theme
    ============================================ */
 
@@ -179,7 +179,7 @@
 }
 
 /* ============================================
-   Orbital ring background animation
+   Background ring animation
    ============================================ */
 @keyframes orbital-rotate {
   from {

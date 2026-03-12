@@ -95,8 +95,8 @@ export function Navbar() {
       <div className="mx-auto flex h-full max-w-7xl items-center justify-between px-4 sm:px-6">
         {/* Left: Logo + Brand */}
         <Link href="/" className="flex items-center gap-2.5">
-          <Image src="/logo.png" alt="Orbital" width={32} height={32} className="rounded-md" />
-          <span className="text-lg font-semibold text-text-primary">Orbital</span>
+          <Image src="/logo.png" alt="StableRail" width={32} height={32} className="rounded-md" />
+          <span className="text-lg font-semibold text-text-primary">StableRail</span>
         </Link>
 
         {/* Center: Navigation links (hidden on mobile) */}
