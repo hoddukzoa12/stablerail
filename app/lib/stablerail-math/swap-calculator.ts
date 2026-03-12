@@ -36,6 +36,16 @@ export interface PoolState {
   feeRateBps: number;
   /** Decimal places for each token mint (e.g. [6, 6, 6] for USDC/USDT/PYUSD) */
   tokenDecimals: number[];
+  /** Cumulative trade volume (Q64.64) */
+  totalVolume: Q6464;
+  /** Cumulative fees collected (Q64.64) */
+  totalFees: Q6464;
+  /** Number of LP positions created */
+  positionCount: number;
+  /** Whether the pool accepts new swaps/deposits */
+  isActive: boolean;
+  /** Total interior liquidity (Q64.64) — denominator for proportional withdrawals */
+  totalInteriorLiquidity: Q6464;
 }
 
 /**

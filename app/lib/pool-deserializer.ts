@@ -96,11 +96,31 @@ export function deserializePoolState(data: Uint8Array): PoolState {
     tokenDecimals.push(data[824 + i]);
   }
 
+  // total_interior_liquidity at offset 709 (i128 LE)
+  const totalInteriorLiquidity = new Q6464(readI128LE(view, 709));
+
+  // is_active at offset 775 (bool)
+  const isActive = data[775] !== 0;
+
+  // total_volume at offset 776 (i128 LE)
+  const totalVolume = new Q6464(readI128LE(view, 776));
+
+  // total_fees at offset 792 (i128 LE)
+  const totalFees = new Q6464(readI128LE(view, 792));
+
+  // position_count at offset 816 (u64 LE)
+  const positionCount = Number(view.getBigUint64(816, true));
+
   return {
     radius,
     reserves,
     nAssets,
     feeRateBps,
     tokenDecimals,
+    totalVolume,
+    totalFees,
+    positionCount,
+    isActive,
+    totalInteriorLiquidity,
   };
 }
