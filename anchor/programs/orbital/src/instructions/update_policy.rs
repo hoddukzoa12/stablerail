@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::state::PolicyState;
+use crate::state::{PolicyState, PoolState};
 use crate::errors::OrbitalError;
 use crate::events::PolicyUpdated;
 use crate::math::FixedPoint;
@@ -22,6 +22,14 @@ pub struct UpdatePolicy<'info> {
         has_one = authority @ OrbitalError::Unauthorized,
     )]
     pub policy: Account<'info, PolicyState>,
+
+    /// Pool account for reading token_decimals (decimal normalization).
+    #[account(
+        seeds = [b"pool", pool.authority.as_ref()],
+        bump = pool.bump,
+        constraint = policy.pool == pool.key() @ OrbitalError::PolicyNotFound,
+    )]
+    pub pool: Account<'info, PoolState>,
 }
 
 pub fn handler(ctx: Context<UpdatePolicy>, params: UpdatePolicyParams) -> Result<()> {
@@ -32,13 +40,14 @@ pub fn handler(ctx: Context<UpdatePolicy>, params: UpdatePolicyParams) -> Result
         OrbitalError::NoFieldsToUpdate
     );
 
+    let pool_decimals = ctx.accounts.pool.token_decimals[0];
     let policy = &mut ctx.accounts.policy;
 
     if let Some(max_trade) = params.max_trade_amount {
-        policy.max_trade_amount = FixedPoint::checked_from_u64(max_trade)?;
+        policy.max_trade_amount = FixedPoint::from_token_amount(max_trade, pool_decimals)?;
     }
     if let Some(max_daily) = params.max_daily_volume {
-        policy.max_daily_volume = FixedPoint::checked_from_u64(max_daily)?;
+        policy.max_daily_volume = FixedPoint::from_token_amount(max_daily, pool_decimals)?;
     }
     if let Some(active) = params.is_active {
         policy.is_active = active;

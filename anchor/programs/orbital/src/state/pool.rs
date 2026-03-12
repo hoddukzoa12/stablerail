@@ -8,6 +8,9 @@ pub struct PoolState {
     pub sphere: Sphere,
     pub reserves: [FixedPoint; MAX_ASSETS],
     pub n_assets: u8,
+    /// Decimal places for each token mint (e.g., 6 for USDC).
+    /// Used for boundary normalization: raw SPL amounts ÷ 10^decimals → FixedPoint.
+    pub token_decimals: [u8; MAX_ASSETS],
     pub token_mints: [Pubkey; MAX_ASSETS],
     pub token_vaults: [Pubkey; MAX_ASSETS],
     /// Bump seeds for vault PDAs (needed for CPI signing)
@@ -24,7 +27,7 @@ pub struct PoolState {
     pub created_at: i64,
     /// Monotonically incrementing counter for position PDA derivation
     pub position_count: u64,
-    pub _reserved: [u8; 112],
+    pub _reserved: [u8; 104],
 }
 
 impl PoolState {
@@ -34,6 +37,7 @@ impl PoolState {
         + 17                                 // sphere (FixedPoint=16 + u8=1)
         + (16 * MAX_ASSETS)                  // reserves
         + 1                                  // n_assets
+        + MAX_ASSETS                         // token_decimals
         + (32 * MAX_ASSETS)                  // token_mints
         + (32 * MAX_ASSETS)                  // token_vaults
         + MAX_ASSETS                         // vault_bumps
@@ -48,7 +52,7 @@ impl PoolState {
         + 16                                 // total_fees
         + 8                                  // created_at
         + 8                                  // position_count
-        + 112;                               // _reserved
+        + 104;                               // _reserved
 
     pub fn active_reserves(&self) -> &[FixedPoint] {
         &self.reserves[..self.n_assets as usize]

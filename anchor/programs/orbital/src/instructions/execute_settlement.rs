@@ -106,7 +106,7 @@ pub fn handler<'info>(
         OrbitalError::Unauthorized
     );
 
-    let amount = FixedPoint::checked_from_u64(params.amount)?;
+    let amount = FixedPoint::from_token_amount(params.amount, pool.token_decimals[token_in])?;
     let clock = Clock::get()?;
     let policy = &mut ctx.accounts.policy;
 
@@ -172,7 +172,7 @@ pub fn handler<'info>(
     )?;
 
     // ── Compute precise amount_out on-chain ──
-    let min_amount_out = FixedPoint::checked_from_u64(params.min_amount_out)?;
+    let min_amount_out = FixedPoint::from_token_amount(params.min_amount_out, pool.token_decimals[token_out])?;
     let fee = swap::compute_fee(amount, pool.fee_rate_bps)?;
     let net_in = amount.checked_sub(fee)?;
     let precise_amount_out = compute_amount_out_analytical(
@@ -195,7 +195,7 @@ pub fn handler<'info>(
     )?;
 
     // ── SPL transfer OUT: vault_out → executor_ata_out (pool PDA signs) ──
-    let amount_out_u64 = result.amount_out.to_u64()?;
+    let amount_out_u64 = result.amount_out.to_token_amount(pool.token_decimals[token_out])?;
     require!(amount_out_u64 > 0, OrbitalError::SwapOutputTooSmall);
 
     let authority_key = pool.authority;
@@ -219,7 +219,7 @@ pub fn handler<'info>(
     // execute_swap subtracts the full FixedPoint amount_out from reserves,
     // but the SPL transfer only moves the truncated u64. Add back the
     // fractional dust so reserves match the actual vault balance.
-    let transferred_fp = FixedPoint::checked_from_u64(amount_out_u64)?;
+    let transferred_fp = FixedPoint::from_token_amount(amount_out_u64, pool.token_decimals[token_out])?;
     let truncation_dust = result.amount_out.checked_sub(transferred_fp)?;
     if truncation_dust.raw > 0 {
         pool.reserves[token_out] = pool.reserves[token_out].checked_add(truncation_dust)?;

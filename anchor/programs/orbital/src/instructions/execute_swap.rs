@@ -93,9 +93,9 @@ pub fn handler<'info>(
         params.amount_in,
     )?;
 
-    // ── Convert u64 → FixedPoint for domain logic ──
-    let amount_in = FixedPoint::checked_from_u64(params.amount_in)?;
-    let min_amount_out = FixedPoint::checked_from_u64(params.min_amount_out)?;
+    // ── Convert u64 → FixedPoint for domain logic (decimal-normalized) ──
+    let amount_in = FixedPoint::from_token_amount(params.amount_in, pool.token_decimals[token_in])?;
+    let min_amount_out = FixedPoint::from_token_amount(params.min_amount_out, pool.token_decimals[token_out])?;
 
     // ── Compute precise amount_out on-chain ──
     // The SDK provides expected_amount_out as a u64 reference, but integer
@@ -125,7 +125,7 @@ pub fn handler<'info>(
     )?;
 
     // ── SPL transfer OUT: vault_out → user_ata_out (pool PDA signs) ──
-    let amount_out_u64 = result.amount_out.to_u64()?;
+    let amount_out_u64 = result.amount_out.to_token_amount(pool.token_decimals[token_out])?;
     require!(amount_out_u64 > 0, OrbitalError::SwapOutputTooSmall);
     let authority_key = pool.authority;
     let pool_bump = pool.bump;

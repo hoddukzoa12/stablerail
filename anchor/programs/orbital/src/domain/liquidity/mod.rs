@@ -132,12 +132,12 @@ pub fn remove_liquidity_from_pool(
     // 2. Compute fraction
     let fraction = remove_amount.checked_div(pool.total_interior_liquidity)?;
 
-    // 3. Calculate proportional returns (truncated to integer token amounts)
+    // 3. Calculate proportional returns (denormalized to raw SPL base units)
     let mut return_amounts = [FixedPoint::zero(); MAX_ASSETS];
     let mut return_amounts_u64 = [0u64; MAX_ASSETS];
     for i in 0..n {
         return_amounts[i] = pool.reserves[i].checked_mul(fraction)?;
-        return_amounts_u64[i] = return_amounts[i].to_u64()?;
+        return_amounts_u64[i] = return_amounts[i].to_token_amount(pool.token_decimals[i])?;
     }
 
     // 4. Reject if all returns round to zero (prevents zero-payout burns)
@@ -147,7 +147,7 @@ pub fn remove_liquidity_from_pool(
     // 5. Subtract truncated returns from reserves (aligned with SPL transfers
     //    to prevent reserve/vault drift from fractional rounding).
     for i in 0..n {
-        let transferred = FixedPoint::checked_from_u64(return_amounts_u64[i])?;
+        let transferred = FixedPoint::from_token_amount(return_amounts_u64[i], pool.token_decimals[i])?;
         pool.reserves[i] = pool.reserves[i].checked_sub(transferred)?;
     }
 

@@ -76,6 +76,61 @@ impl FixedPoint {
         Ok(Self { raw })
     }
 
+    /// Convert raw SPL token amount to FixedPoint with decimal normalization.
+    ///
+    /// Transforms base-unit amounts (e.g., 1_500_000 for 1.5 USDC at 6 decimals)
+    /// into whole-token FixedPoint values (FixedPoint(1.5)).
+    ///
+    /// This normalization reduces the integer magnitude by 10^decimals, extending
+    /// the Q64.64 safe range from ~740 tokens to ~1.75 billion tokens per asset.
+    pub fn from_token_amount(raw: u64, decimals: u8) -> Result<Self> {
+        if decimals == 0 {
+            return Self::checked_from_u64(raw);
+        }
+        let scale = 10u128.pow(decimals as u32);
+        let raw_u128 = raw as u128;
+        let whole = raw_u128 / scale;
+        let frac = raw_u128 % scale;
+        let whole_shifted = whole
+            .checked_shl(FRAC_BITS)
+            .ok_or_else(|| error!(crate::errors::OrbitalError::MathOverflow))?;
+        // frac < scale <= 10^18, so frac << 64 < 1.8e37 < u128::MAX
+        let frac_shifted = (frac << FRAC_BITS) / scale;
+        let result = whole_shifted
+            .checked_add(frac_shifted)
+            .ok_or_else(|| error!(crate::errors::OrbitalError::MathOverflow))?;
+        if result > i128::MAX as u128 {
+            return Err(error!(crate::errors::OrbitalError::MathOverflow));
+        }
+        Ok(Self { raw: result as i128 })
+    }
+
+    /// Convert FixedPoint back to raw SPL token amount with decimal denormalization.
+    ///
+    /// Transforms whole-token FixedPoint values (e.g., FixedPoint(1.5)) back into
+    /// base-unit amounts (1_500_000 for 6 decimals).
+    pub fn to_token_amount(&self, decimals: u8) -> Result<u64> {
+        if decimals == 0 {
+            return self.to_u64();
+        }
+        require!(self.raw >= 0, crate::errors::OrbitalError::MathOverflow);
+        let scale = 10u128.pow(decimals as u32);
+        let raw_u128 = self.raw as u128;
+        let whole = raw_u128 >> FRAC_BITS;
+        let frac = raw_u128 & ((1u128 << FRAC_BITS) - 1);
+        let result = whole
+            .checked_mul(scale)
+            .ok_or_else(|| error!(crate::errors::OrbitalError::MathOverflow))?
+            // Round-half-up: add 0.5 ULP before truncating to recover
+            // the original value after from_token_amount's floor.
+            .checked_add((frac * scale + (1u128 << (FRAC_BITS - 1))) >> FRAC_BITS)
+            .ok_or_else(|| error!(crate::errors::OrbitalError::MathOverflow))?;
+        if result > u64::MAX as u128 {
+            return Err(error!(crate::errors::OrbitalError::MathOverflow));
+        }
+        Ok(result as u64)
+    }
+
     /// Create from a fraction (numerator / denominator)
     pub fn from_fraction(num: i64, den: i64) -> Result<Self> {
         require!(den != 0, crate::errors::OrbitalError::DivisionByZero);
@@ -503,5 +558,141 @@ mod tests {
             a.checked_div(half).is_err(),
             "i64::MAX / 0.5 should overflow in checked_div"
         );
+    }
+
+    // ══════════════════════════════════════════════
+    // from_token_amount / to_token_amount tests
+    // ══════════════════════════════════════════════
+
+    #[test]
+    fn test_from_token_amount_whole_token() {
+        // 1_000_000 raw with 6 decimals = exactly 1.0 token
+        let fp = FixedPoint::from_token_amount(1_000_000, 6).unwrap();
+        assert_eq!(fp.raw, FixedPoint::one().raw);
+    }
+
+    #[test]
+    fn test_from_token_amount_fractional() {
+        // 1_500_000 raw with 6 decimals = 1.5 tokens
+        let fp = FixedPoint::from_token_amount(1_500_000, 6).unwrap();
+        let expected = FixedPoint::from_fraction(3, 2).unwrap(); // 1.5
+        let epsilon = FixedPoint::from_raw(2);
+        assert!(fp.approx_eq(expected, epsilon),
+            "1.5M raw → {:?}, expected {:?}", fp, expected);
+    }
+
+    #[test]
+    fn test_from_token_amount_zero() {
+        let fp = FixedPoint::from_token_amount(0, 6).unwrap();
+        assert_eq!(fp.raw, 0);
+    }
+
+    #[test]
+    fn test_from_token_amount_sub_token() {
+        // 1 raw with 6 decimals = 0.000001 tokens
+        let fp = FixedPoint::from_token_amount(1, 6).unwrap();
+        assert!(fp.raw > 0, "sub-token amount should produce positive FixedPoint");
+        assert!(fp.raw < FixedPoint::one().raw, "should be less than 1.0");
+    }
+
+    #[test]
+    fn test_from_token_amount_zero_decimals() {
+        // 0 decimals falls through to checked_from_u64
+        let fp = FixedPoint::from_token_amount(42, 0).unwrap();
+        assert_eq!(fp.raw, FixedPoint::from_int(42).raw);
+    }
+
+    #[test]
+    fn test_from_token_amount_large_1b_tokens() {
+        // 1 billion tokens at 6 decimals = 10^15 raw
+        let raw = 1_000_000_000_000_000u64; // 10^15
+        let fp = FixedPoint::from_token_amount(raw, 6).unwrap();
+        let expected = FixedPoint::from_int(1_000_000_000); // 10^9
+        assert_eq!(fp.raw, expected.raw, "1B tokens should work");
+    }
+
+    #[test]
+    fn test_to_token_amount_whole() {
+        let fp = FixedPoint::from_int(1); // 1.0
+        let raw = fp.to_token_amount(6).unwrap();
+        assert_eq!(raw, 1_000_000);
+    }
+
+    #[test]
+    fn test_to_token_amount_fractional() {
+        let fp = FixedPoint::from_fraction(3, 2).unwrap(); // 1.5
+        let raw = fp.to_token_amount(6).unwrap();
+        assert_eq!(raw, 1_500_000);
+    }
+
+    #[test]
+    fn test_to_token_amount_zero() {
+        let fp = FixedPoint::zero();
+        let raw = fp.to_token_amount(6).unwrap();
+        assert_eq!(raw, 0);
+    }
+
+    #[test]
+    fn test_to_token_amount_negative_fails() {
+        let fp = FixedPoint::from_int(-1);
+        assert!(fp.to_token_amount(6).is_err());
+    }
+
+    #[test]
+    fn test_roundtrip_6_decimals() {
+        // Exact roundtrip for whole-token and significant sub-token values.
+        // Sub-unit values (raw < ~19 for 6 dec) may lose ≤1 unit due to
+        // double Q64.64 truncation — acceptable for stablecoin amounts.
+        let test_values: &[u64] = &[
+            0, 1_000_000, 1_500_000,
+            123_456_789, 1_000_000_000_000, // 1M tokens
+        ];
+        for &val in test_values {
+            let fp = FixedPoint::from_token_amount(val, 6).unwrap();
+            let back = fp.to_token_amount(6).unwrap();
+            assert_eq!(back, val, "roundtrip failed for {}", val);
+        }
+        // Sub-unit dust: at most 1 raw unit loss
+        for &val in &[1u64, 5, 18] {
+            let fp = FixedPoint::from_token_amount(val, 6).unwrap();
+            let back = fp.to_token_amount(6).unwrap();
+            assert!(
+                val.abs_diff(back) <= 1,
+                "sub-unit dust roundtrip off by >1 for {}",
+                val
+            );
+        }
+    }
+
+    #[test]
+    fn test_roundtrip_9_decimals() {
+        // Whole-token and significant sub-token values at 9 decimals.
+        let test_values: &[u64] = &[
+            0, 1_000_000_000, 1_500_000_000, 999_999_999,
+        ];
+        for &val in test_values {
+            let fp = FixedPoint::from_token_amount(val, 9).unwrap();
+            let back = fp.to_token_amount(9).unwrap();
+            assert_eq!(back, val, "roundtrip failed for {} (9 dec)", val);
+        }
+        // Sub-unit dust: at most 1 raw unit loss (1 = 0.000000001 token)
+        for &val in &[1u64, 10, 100] {
+            let fp = FixedPoint::from_token_amount(val, 9).unwrap();
+            let back = fp.to_token_amount(9).unwrap();
+            assert!(
+                val.abs_diff(back) <= 1,
+                "sub-unit dust roundtrip off by >1 for {} (9 dec)",
+                val
+            );
+        }
+    }
+
+    #[test]
+    fn test_roundtrip_large_1b_tokens_6dec() {
+        // 1B tokens at 6 decimals
+        let val = 1_000_000_000_000_000u64;
+        let fp = FixedPoint::from_token_amount(val, 6).unwrap();
+        let back = fp.to_token_amount(6).unwrap();
+        assert_eq!(back, val, "1B tokens roundtrip failed");
     }
 }
