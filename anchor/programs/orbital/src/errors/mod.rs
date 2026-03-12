@@ -127,4 +127,7 @@ pub enum OrbitalError {
 
     #[msg("All pool tokens must have the same number of decimals")]
     DecimalsMismatch,
+
+    #[msg("Cannot close pool: outstanding LP liquidity exists")]
+    PoolNotEmpty,
 }

@@ -72,7 +72,7 @@ fn test_initialize_pool_creates_vaults_and_transfers() {
         token_mints_arr[i] = mint_kp.pubkey();
     }
 
-    let data = build_init_pool_data(n_assets, 30, deposit, token_mints_arr);
+    let data = build_init_pool_data(n_assets, 1, deposit, token_mints_arr);
 
     // Accounts: authority, pool, system_program, token_program, rent
     let mut accounts = vec![

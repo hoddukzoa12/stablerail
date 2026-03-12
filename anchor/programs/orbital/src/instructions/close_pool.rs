@@ -34,6 +34,13 @@ pub fn handler<'info>(
     let pool = &ctx.accounts.pool;
     let n = pool.n_assets as usize;
 
+    // Guard: reject close if any LP positions are outstanding.
+    // This preserves the emergency-exit guarantee for LPs (see remove_liquidity.rs).
+    require!(
+        pool.total_interior_liquidity.is_zero(),
+        OrbitalError::PoolNotEmpty
+    );
+
     let remaining = &ctx.remaining_accounts;
     require!(
         remaining.len() == 2 * n,
@@ -55,6 +62,18 @@ pub fn handler<'info>(
             *vault_info.key == pool.token_vaults[i],
             OrbitalError::InvalidVaultAddress
         );
+
+        // Validate destination ATA is owned by authority (defense-in-depth,
+        // mirrors execute_settlement.rs pattern for consistent security posture)
+        {
+            let ata_data = dest_ata_info.try_borrow_data()?;
+            require!(ata_data.len() >= 64, OrbitalError::InvalidRemainingAccounts);
+            // SPL Token Account layout: [mint 32B][owner 32B]...
+            require!(
+                ata_data[32..64] == ctx.accounts.authority.key().to_bytes(),
+                OrbitalError::Unauthorized
+            );
+        }
 
         // Step 1: Transfer all tokens from vault to authority ATA
         let vault_data = vault_info.try_borrow_data()?;
