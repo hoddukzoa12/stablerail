@@ -67,13 +67,6 @@ export function PoolOverview({ pool }: PoolOverviewProps) {
         </div>
 
         <div>
-          <p className="text-xs text-text-tertiary">LP Positions</p>
-          <p className="font-mono text-lg font-semibold text-text-primary">
-            {pool.positionCount}
-          </p>
-        </div>
-
-        <div>
           <p className="text-xs text-text-tertiary">Sphere Radius</p>
           <p className="font-mono text-sm text-text-secondary">
             {q6464ToNumber(pool.radius.raw).toLocaleString("en-US", {

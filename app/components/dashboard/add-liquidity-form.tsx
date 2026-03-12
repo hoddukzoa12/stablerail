@@ -54,13 +54,14 @@ export function AddLiquidityForm({
     });
   };
 
-  /** MAX button: set that token to its full balance */
+  /** MAX button: set that token to its full balance (floor to 2 decimals) */
   const handleMax = (index: number) => {
     const token = tokens[index];
     const bal = balances[token.symbol] ?? 0n;
-    const maxAmount = Number(bal) / 10 ** token.decimals;
-    if (maxAmount <= 0) return;
-    updateAmount(index, maxAmount.toString());
+    const raw = Number(bal) / 10 ** token.decimals;
+    if (raw <= 0) return;
+    const floored = Math.floor(raw * 100) / 100;
+    updateAmount(index, floored.toFixed(2));
   };
 
   /** Proportional fill: user picks one token, others auto-calculated from reserve ratio */
@@ -90,7 +91,7 @@ export function AddLiquidityForm({
     const scale = limitRatio < 1 ? limitRatio : 1;
 
     setAmounts(
-      proportional.map((p) => (p * scale).toFixed(2)),
+      proportional.map((p) => (Math.floor(p * scale * 100) / 100).toFixed(2)),
     );
   };
 

@@ -28,16 +28,28 @@ export default function DashboardPage() {
   const {
     transactions,
     isLoading: txLoading,
+    refresh: refreshTransactions,
   } = useTransactionHistory();
 
   const [liquidityModalOpen, setLiquidityModalOpen] = useState(false);
 
   const isConnected = status === "connected";
 
+  /** Refresh all data after a tx succeeds.
+   *  Wait ~2s for RPC to reflect the confirmed transaction. */
   const handleLiquiditySuccess = () => {
+    // Immediate refresh (catches fast RPC nodes)
     refreshPool();
     refreshBalances();
     refreshPositions();
+    refreshTransactions();
+    // Delayed refresh (catches slower propagation)
+    setTimeout(() => {
+      refreshPool();
+      refreshBalances();
+      refreshPositions();
+      refreshTransactions();
+    }, 2000);
   };
 
   const openLiquidityModal = () => setLiquidityModalOpen(true);

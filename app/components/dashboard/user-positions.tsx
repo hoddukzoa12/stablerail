@@ -56,20 +56,67 @@ export function UserPositions({
   const [removingAddress, setRemovingAddress] = useState<string | null>(null);
   const [txResult, setTxResult] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ActiveTab>("positions");
-  /** Per-position removal percentage: 25 | 50 | 75 | 100 */
-  const [removePercent, setRemovePercent] = useState<Record<string, number>>({});
+
+  // ── Aggregate state ──
+  const [expanded, setExpanded] = useState(false);
+  const [aggregatePercent, setAggregatePercent] = useState(100);
+  const [aggregateRemoving, setAggregateRemoving] = useState(false);
+  const [removeProgress, setRemoveProgress] = useState<string | null>(null);
+
+  // ── Per-position state (used in expanded view) ──
+  const [removePercent, setRemovePercent] = useState<Record<string, number>>(
+    {},
+  );
 
   // Filter out fully withdrawn (liquidity = 0) positions
   const activePositions = positions.filter((p) => p.liquidityRaw > 0n);
 
+  // Aggregate totals
+  const totalLiquidity = activePositions.reduce(
+    (sum, p) => sum + p.liquidityDisplay,
+    0,
+  );
+
   const getPercent = (address: string) => removePercent[address] ?? 100;
 
+  // ── Aggregate remove: apply same % to all positions sequentially ──
+  const handleAggregateRemove = async () => {
+    setAggregateRemoving(true);
+    setTxResult(null);
+    const total = activePositions.length;
+    let lastSig: string | null = null;
+
+    for (let i = 0; i < total; i++) {
+      setRemoveProgress(`Removing ${i + 1}/${total}...`);
+      const pos = activePositions[i];
+      const partialRaw =
+        aggregatePercent === 100
+          ? pos.liquidityRaw
+          : (pos.liquidityRaw * BigInt(aggregatePercent)) / 100n;
+
+      try {
+        const sig = await execute({
+          positionAddress: pos.address,
+          liquidityRaw: partialRaw,
+        });
+        lastSig = sig;
+      } catch {
+        break; // stop on first failure — error tracked in hook
+      }
+    }
+
+    if (lastSig) setTxResult(lastSig);
+    setAggregateRemoving(false);
+    setRemoveProgress(null);
+    onRemoveSuccess();
+  };
+
+  // ── Individual position remove (expanded view) ──
   const handleRemove = async (position: UserPosition) => {
     setRemovingAddress(position.address);
     setTxResult(null);
 
     const pct = getPercent(position.address);
-    // Calculate partial liquidity: liquidityRaw * pct / 100
     const partialRaw =
       pct === 100
         ? position.liquidityRaw
@@ -142,69 +189,40 @@ export function UserPositions({
             </p>
           )}
 
-          <div className="space-y-3">
-            {activePositions.map((pos, i) => (
-              <div
-                key={pos.address}
-                className="rounded-lg bg-surface-2 p-3"
-              >
+          {/* ── Aggregate card ── */}
+          {activePositions.length > 0 && (
+            <div className="space-y-3">
+              <div className="rounded-lg bg-surface-2 p-4">
+                {/* Total liquidity header */}
                 <div className="flex items-start justify-between">
                   <div>
-                    <p className="text-sm font-medium text-text-primary">
-                      Position #{activePositions.length - i}
+                    <p className="text-xs text-text-tertiary">
+                      Total Liquidity
                     </p>
-                    <a
-                      href={`https://explorer.solana.com/address/${pos.address}?cluster=devnet`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mt-0.5 font-mono text-xs text-text-tertiary underline-offset-2 hover:text-accent-blue hover:underline"
-                    >
-                      {truncateAddress(pos.address)} ↗
-                    </a>
+                    <p className="mt-0.5 font-mono text-lg font-semibold text-text-primary">
+                      {totalLiquidity.toLocaleString("en-US", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 4,
+                      })}
+                    </p>
                   </div>
-                  <span className="text-xs text-text-tertiary">
-                    {formatDate(pos.createdAt)}
+                  <span className="rounded-full bg-accent-purple/10 px-2.5 py-1 text-xs font-medium text-accent-purple">
+                    {activePositions.length}{" "}
+                    {activePositions.length === 1 ? "position" : "positions"}
                   </span>
                 </div>
 
-                <div className="mt-2">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-xs text-text-tertiary">Liquidity</p>
-                      <p className="font-mono text-sm font-semibold text-text-primary">
-                        {pos.liquidityDisplay.toLocaleString("en-US", {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 4,
-                        })}
-                      </p>
-                    </div>
-
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      disabled={isSending && removingAddress === pos.address}
-                      onClick={() => handleRemove(pos)}
-                    >
-                      {isSending && removingAddress === pos.address
-                        ? "Removing..."
-                        : `Remove ${getPercent(pos.address)}%`}
-                    </Button>
-                  </div>
-
-                  {/* Percentage selector */}
-                  <div className="mt-2 flex gap-1">
+                {/* Aggregate percentage selector + remove button */}
+                <div className="mt-3 space-y-2">
+                  {/* Preset buttons + custom input row */}
+                  <div className="flex items-center gap-1.5">
                     {[25, 50, 75, 100].map((pct) => (
                       <button
                         key={pct}
                         type="button"
-                        onClick={() =>
-                          setRemovePercent((prev) => ({
-                            ...prev,
-                            [pos.address]: pct,
-                          }))
-                        }
-                        className={`flex-1 rounded-md py-1 text-[10px] font-semibold transition-colors ${
-                          getPercent(pos.address) === pct
+                        onClick={() => setAggregatePercent(pct)}
+                        className={`flex-1 rounded-md py-1.5 text-[11px] font-semibold transition-colors ${
+                          aggregatePercent === pct
                             ? "bg-brand-primary/20 text-brand-primary"
                             : "bg-surface-3 text-text-tertiary hover:text-text-secondary"
                         }`}
@@ -212,11 +230,156 @@ export function UserPositions({
                         {pct}%
                       </button>
                     ))}
+                    {/* Custom percentage input */}
+                    <div className="relative flex w-16 shrink-0 items-center">
+                      <input
+                        type="number"
+                        min={1}
+                        max={100}
+                        value={aggregatePercent}
+                        onChange={(e) => {
+                          const v = Math.max(1, Math.min(100, Number(e.target.value) || 1));
+                          setAggregatePercent(v);
+                        }}
+                        className="w-full rounded-md bg-surface-3 py-1.5 pl-2 pr-5 font-mono text-[11px] font-semibold text-text-primary outline-none focus:ring-1 focus:ring-brand-primary/40"
+                      />
+                      <span className="pointer-events-none absolute right-1.5 text-[10px] text-text-tertiary">
+                        %
+                      </span>
+                    </div>
                   </div>
+                  {/* Remove button */}
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="w-full"
+                    disabled={aggregateRemoving || isSending}
+                    onClick={handleAggregateRemove}
+                  >
+                    {aggregateRemoving
+                      ? removeProgress ?? "Removing..."
+                      : `Remove ${aggregatePercent}%`}
+                  </Button>
                 </div>
+
+                {/* Expand/collapse toggle */}
+                <button
+                  type="button"
+                  onClick={() => setExpanded((prev) => !prev)}
+                  className="mt-3 flex w-full items-center gap-1.5 text-xs text-text-tertiary transition-colors hover:text-text-secondary"
+                >
+                  <svg
+                    className={`h-3 w-3 transition-transform ${expanded ? "rotate-90" : ""}`}
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                  >
+                    <path d="M9 5l7 7-7 7" />
+                  </svg>
+                  {expanded
+                    ? "Hide individual positions"
+                    : "View individual positions"}
+                </button>
               </div>
-            ))}
-          </div>
+
+              {/* ── Individual positions (expanded) ── */}
+              {expanded && (
+                <div className="space-y-2 pl-1">
+                  {activePositions.map((pos, i) => (
+                    <div
+                      key={pos.address}
+                      className="rounded-lg border border-border-default/50 bg-surface-2/60 p-3"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <p className="text-xs font-medium text-text-secondary">
+                            Position #{activePositions.length - i}
+                          </p>
+                          <a
+                            href={`https://explorer.solana.com/address/${pos.address}?cluster=devnet`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-0.5 font-mono text-[11px] text-text-tertiary underline-offset-2 hover:text-accent-blue hover:underline"
+                          >
+                            {truncateAddress(pos.address)} ↗
+                          </a>
+                        </div>
+                        <span className="text-[11px] text-text-tertiary">
+                          {formatDate(pos.createdAt)}
+                        </span>
+                      </div>
+
+                      <div className="mt-2">
+                        <div className="flex items-center justify-between">
+                          <p className="font-mono text-sm font-medium text-text-primary">
+                            {pos.liquidityDisplay.toLocaleString("en-US", {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 4,
+                            })}
+                          </p>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            disabled={
+                              isSending && removingAddress === pos.address
+                            }
+                            onClick={() => handleRemove(pos)}
+                          >
+                            {isSending && removingAddress === pos.address
+                              ? "Removing..."
+                              : `Remove ${getPercent(pos.address)}%`}
+                          </Button>
+                        </div>
+
+                        {/* Per-position percentage selector */}
+                        <div className="mt-1.5 flex items-center gap-1">
+                          {[25, 50, 75, 100].map((pct) => (
+                            <button
+                              key={pct}
+                              type="button"
+                              onClick={() =>
+                                setRemovePercent((prev) => ({
+                                  ...prev,
+                                  [pos.address]: pct,
+                                }))
+                              }
+                              className={`flex-1 rounded-md py-0.5 text-[10px] font-semibold transition-colors ${
+                                getPercent(pos.address) === pct
+                                  ? "bg-brand-primary/20 text-brand-primary"
+                                  : "bg-surface-3 text-text-tertiary hover:text-text-secondary"
+                              }`}
+                            >
+                              {pct}%
+                            </button>
+                          ))}
+                          <div className="relative flex w-14 shrink-0 items-center">
+                            <input
+                              type="number"
+                              min={1}
+                              max={100}
+                              value={getPercent(pos.address)}
+                              onChange={(e) => {
+                                const v = Math.max(1, Math.min(100, Number(e.target.value) || 1));
+                                setRemovePercent((prev) => ({
+                                  ...prev,
+                                  [pos.address]: v,
+                                }));
+                              }}
+                              className="w-full rounded-md bg-surface-3 py-0.5 pl-1.5 pr-4 font-mono text-[10px] font-semibold text-text-primary outline-none focus:ring-1 focus:ring-brand-primary/40"
+                            />
+                            <span className="pointer-events-none absolute right-1 text-[9px] text-text-tertiary">
+                              %
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Error */}
           {error && (
