@@ -36,6 +36,12 @@ pub fn handler<'info>(
 
     // Guard: reject close if any LP positions are outstanding.
     // This preserves the emergency-exit guarantee for LPs (see remove_liquidity.rs).
+    //
+    // TODO(post-hackathon): This guard is unreachable — initial seed liquidity
+    // (per_asset_deposit * n) has no Position PDA and no burn path, so
+    // total_interior_liquidity can never reach zero. Fix: add `initial_liquidity`
+    // field to PoolState and compare against it instead of zero.
+    // Tracked: https://github.com/hoddukzoa12/stablerail/issues/47
     require!(
         pool.total_interior_liquidity.is_zero(),
         OrbitalError::PoolNotEmpty
