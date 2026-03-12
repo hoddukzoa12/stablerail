@@ -24,7 +24,12 @@ pub struct PoolState {
     pub created_at: i64,
     /// Monotonically incrementing counter for position PDA derivation
     pub position_count: u64,
-    pub _reserved: [u8; 112],
+    /// Decimal places for each token mint (e.g., 6 for USDC).
+    /// Used for boundary normalization: raw SPL amounts ÷ 10^decimals → FixedPoint.
+    /// Placed at end of struct (append-only) to preserve layout compatibility
+    /// with accounts created before decimal normalization was added.
+    pub token_decimals: [u8; MAX_ASSETS],
+    pub _reserved: [u8; 104],
 }
 
 impl PoolState {
@@ -48,7 +53,8 @@ impl PoolState {
         + 16                                 // total_fees
         + 8                                  // created_at
         + 8                                  // position_count
-        + 112;                               // _reserved
+        + MAX_ASSETS                         // token_decimals (append-only)
+        + 104;                               // _reserved
 
     pub fn active_reserves(&self) -> &[FixedPoint] {
         &self.reserves[..self.n_assets as usize]

@@ -36,6 +36,7 @@ const ERROR_SAME_TOKEN_SWAP: u32 = 6011;
 /// Compute expected_amount_out for a swap on a pool with UPDATED reserves.
 ///
 /// Used for chained swaps where reserves are no longer equal.
+/// `decimals` is the SPL token decimals (e.g., 6 for USDC).
 fn compute_expected_out_with_reserves(
     n_assets: u8,
     deposit_per_asset: u64,
@@ -44,8 +45,9 @@ fn compute_expected_out_with_reserves(
     token_in: usize,
     token_out: usize,
     amount_in: u64,
+    decimals: u8,
 ) -> u64 {
-    let per_asset = FixedPoint::checked_from_u64(deposit_per_asset).unwrap();
+    let per_asset = FixedPoint::from_token_amount(deposit_per_asset, decimals).unwrap();
     let radius = compute_radius_from_deposit(per_asset, n_assets).unwrap();
     let sphere = Sphere {
         radius,
@@ -54,17 +56,17 @@ fn compute_expected_out_with_reserves(
 
     let reserves: Vec<FixedPoint> = reserves_u64
         .iter()
-        .map(|&r| FixedPoint::checked_from_u64(r).unwrap())
+        .map(|&r| FixedPoint::from_token_amount(r, decimals).unwrap())
         .collect();
 
-    let amount_in_fp = FixedPoint::checked_from_u64(amount_in).unwrap();
+    let amount_in_fp = FixedPoint::from_token_amount(amount_in, decimals).unwrap();
     let fee = compute_fee(amount_in_fp, fee_rate_bps).unwrap();
     let net_in = amount_in_fp.checked_sub(fee).unwrap();
 
     let expected_out_fp =
         compute_amount_out_analytical(&sphere, &reserves, token_in, token_out, net_in).unwrap();
 
-    expected_out_fp.to_u64().unwrap()
+    expected_out_fp.to_token_amount(decimals).unwrap()
 }
 
 // ── Instruction Builders ──
@@ -291,7 +293,7 @@ fn test_swap_transfers_tokens() {
     // Compute exact expected_amount_out using Q64.64 math
     let amount_in: u64 = 10_000;
     let expected_out = compute_valid_expected_out(
-        tp.n_assets, tp.deposit, 30, 0, 1, amount_in,
+        tp.n_assets, tp.deposit, 30, 0, 1, amount_in, 6,
     );
     assert!(expected_out > 0, "expected_out must be positive");
 
@@ -381,7 +383,7 @@ fn test_swap_rejects_slippage_exceeded() {
     // Compute the real expected output for reference
     let amount_in: u64 = 10_000;
     let expected_out = compute_valid_expected_out(
-        tp.n_assets, tp.deposit, 30, 0, 1, amount_in,
+        tp.n_assets, tp.deposit, 30, 0, 1, amount_in, 6,
     );
 
     // Set min_amount_out higher than actual → slippage exceeded
@@ -417,7 +419,7 @@ fn test_swap_roundtrip() {
     // ── First swap: 0 → 1 ──
     let amount_in_1: u64 = 10_000;
     let expected_out_1 = compute_valid_expected_out(
-        tp.n_assets, tp.deposit, 30, 0, 1, amount_in_1,
+        tp.n_assets, tp.deposit, 30, 0, 1, amount_in_1, 6,
     );
 
     send_swap(
@@ -439,7 +441,7 @@ fn test_swap_roundtrip() {
         tp.n_assets, tp.deposit, 30,
         &[reserve_0, reserve_1, reserve_2],
         1, 0,
-        amount_in_2,
+        amount_in_2, 6,
     );
 
     send_swap(

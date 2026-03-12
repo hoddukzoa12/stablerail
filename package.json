@@ -11,7 +11,9 @@
     "format:check": "prettier --check .",
     "lint": "eslint",
     "setup": "npm run anchor-build && npm run codama:js",
-    "start": "next start"
+    "start": "next start",
+    "deploy:devnet": "bash scripts/deploy-devnet.sh",
+    "bootstrap:devnet": "cd scripts && npm install && npm run bootstrap"
   },
   "description": "Orbital Settlement Protocol — Paradigm Orbital AMM on Solana with institutional settlement",
   "keywords": [

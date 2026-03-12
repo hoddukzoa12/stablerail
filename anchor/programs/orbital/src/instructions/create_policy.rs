@@ -42,8 +42,9 @@ pub fn handler(ctx: Context<CreatePolicy>, params: CreatePolicyParams) -> Result
     policy.bump = ctx.bumps.policy;
     policy.authority = ctx.accounts.authority.key();
     policy.pool = ctx.accounts.pool.key();
-    policy.max_trade_amount = FixedPoint::checked_from_u64(params.max_trade_amount)?;
-    policy.max_daily_volume = FixedPoint::checked_from_u64(params.max_daily_volume)?;
+    let pool_decimals = ctx.accounts.pool.token_decimals[0];
+    policy.max_trade_amount = FixedPoint::from_token_amount(params.max_trade_amount, pool_decimals)?;
+    policy.max_daily_volume = FixedPoint::from_token_amount(params.max_daily_volume, pool_decimals)?;
     policy.current_daily_volume = FixedPoint::zero();
     policy.is_active = true;
     policy._reserved = [0u8; 64];

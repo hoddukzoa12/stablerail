@@ -124,4 +124,7 @@ pub enum OrbitalError {
 
     #[msg("Daily volume limit exceeded")]
     DailyVolumeLimitExceeded,
+
+    #[msg("All pool tokens must have the same number of decimals")]
+    DecimalsMismatch,
 }

@@ -109,6 +109,25 @@ pub fn handler<'info>(
         &[pool.bump],
     ];
 
+    // ── Read and validate token decimals from mint accounts ──
+    let mut token_decimals_arr = [0u8; MAX_ASSETS];
+    for i in 0..n {
+        let mint_info = &remaining[mint_offset + i];
+        let mint_data = mint_info.try_borrow_data()?;
+        // SPL Mint layout: [mint_authority: 36B, supply: 8B, decimals: 1B, ...]
+        require!(mint_data.len() >= 45, OrbitalError::InvalidRemainingAccounts);
+        token_decimals_arr[i] = mint_data[44];
+    }
+    // MVP: require all pool tokens have the same decimals (stablecoin assumption)
+    let pool_decimals = token_decimals_arr[0];
+    for i in 1..n {
+        require!(
+            token_decimals_arr[i] == pool_decimals,
+            OrbitalError::DecimalsMismatch
+        );
+    }
+    pool.token_decimals = token_decimals_arr;
+
     for i in 0..n {
         let mint_info = &remaining[mint_offset + i];
         let vault_info = &remaining[vault_offset + i];
@@ -184,7 +203,8 @@ pub fn handler<'info>(
     }
 
     // ── Initialize reserves, sphere, and caches via domain logic ──
-    let deposit_fp = FixedPoint::checked_from_u64(params.initial_deposit_per_asset)?;
+    // Normalize raw SPL amount to whole-token FixedPoint (e.g., 1_000_000 → FP(1.0) for 6 dec)
+    let deposit_fp = FixedPoint::from_token_amount(params.initial_deposit_per_asset, pool_decimals)?;
     initialize_pool_reserves(pool, deposit_fp, &params.token_mints[..n], &vault_pubkeys[..n])?;
 
     // ── Emit event ──

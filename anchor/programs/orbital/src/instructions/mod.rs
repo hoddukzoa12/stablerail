@@ -6,6 +6,7 @@ pub mod create_policy;
 pub mod update_policy;
 pub mod manage_allowlist;
 pub mod execute_settlement;
+pub mod close_pool;
 
 pub use initialize_pool::*;
 pub use execute_swap::*;
@@ -15,3 +16,4 @@ pub use create_policy::*;
 pub use update_policy::*;
 pub use manage_allowlist::*;
 pub use execute_settlement::*;
+pub use close_pool::*;

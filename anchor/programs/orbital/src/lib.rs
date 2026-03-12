@@ -80,4 +80,14 @@ pub mod orbital {
     ) -> Result<()> {
         instructions::execute_settlement::handler(ctx, params)
     }
+
+    // ═══════════════════════════════════════════
+    //  Admin — Pool Lifecycle Management
+    // ═══════════════════════════════════════════
+
+    pub fn close_pool<'info>(
+        ctx: Context<'_, '_, 'info, 'info, ClosePool<'info>>,
+    ) -> Result<()> {
+        instructions::close_pool::handler(ctx)
+    }
 }

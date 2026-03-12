@@ -385,7 +385,7 @@ fn test_settlement_executes_swap() {
 
     let amount: u64 = 10_000;
     let expected_out = compute_valid_expected_out(
-        env.n_assets, env.deposit, 30, 0, 1, amount,
+        env.n_assets, env.deposit, 30, 0, 1, amount, 6,
     );
     assert!(expected_out > 0, "expected_out must be positive");
 
@@ -517,6 +517,7 @@ fn test_settlement_rejects_inactive_policy() {
     let update_accounts = vec![
         AccountMeta::new(env.authority.pubkey(), true),
         AccountMeta::new(env.policy_pda, false),
+        AccountMeta::new_readonly(env.pool_pda, false),
     ];
     let update_ix = Instruction {
         program_id: PROGRAM_ID,

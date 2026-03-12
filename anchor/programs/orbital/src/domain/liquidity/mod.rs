@@ -99,9 +99,9 @@ pub fn add_liquidity_to_pool(
 /// Workflow:
 ///   1. Validate removal amount
 ///   2. Compute LP's fraction: remove_amount / total_interior_liquidity
-///   3. Calculate proportional per-token returns (truncated to u64)
+///   3. Calculate proportional per-token returns (denormalized to SPL base units via floor rounding)
 ///   4. Reject if all returns round to zero (prevents zero-payout burns)
-///   5. Subtract truncated returns from reserves (aligned with SPL transfers)
+///   5. Subtract denormalized returns from reserves (aligned with SPL transfers)
 ///   6. Subtract from total_interior_liquidity
 ///   7. Recompute sphere radius
 ///   8. Update caches
@@ -132,12 +132,17 @@ pub fn remove_liquidity_from_pool(
     // 2. Compute fraction
     let fraction = remove_amount.checked_div(pool.total_interior_liquidity)?;
 
-    // 3. Calculate proportional returns (truncated to integer token amounts)
+    // 3. Calculate proportional returns (denormalized to raw SPL base units)
+    //
+    // IMPORTANT: Use floor rounding (not round-half-up) to prevent the
+    // reconverted amount from exceeding the on-chain reserve after swaps
+    // leave fractional Q64.64 dust. Floor ensures LP receives at most
+    // their proportional share; the pool keeps sub-unit dust.
     let mut return_amounts = [FixedPoint::zero(); MAX_ASSETS];
     let mut return_amounts_u64 = [0u64; MAX_ASSETS];
     for i in 0..n {
         return_amounts[i] = pool.reserves[i].checked_mul(fraction)?;
-        return_amounts_u64[i] = return_amounts[i].to_u64()?;
+        return_amounts_u64[i] = return_amounts[i].to_token_amount_floor(pool.token_decimals[i])?;
     }
 
     // 4. Reject if all returns round to zero (prevents zero-payout burns)
@@ -147,7 +152,7 @@ pub fn remove_liquidity_from_pool(
     // 5. Subtract truncated returns from reserves (aligned with SPL transfers
     //    to prevent reserve/vault drift from fractional rounding).
     for i in 0..n {
-        let transferred = FixedPoint::checked_from_u64(return_amounts_u64[i])?;
+        let transferred = FixedPoint::from_token_amount(return_amounts_u64[i], pool.token_decimals[i])?;
         pool.reserves[i] = pool.reserves[i].checked_sub(transferred)?;
     }
 
@@ -361,6 +366,63 @@ mod tests {
         assert_eq!(pool.total_interior_liquidity.raw, 0);
 
         // Invariant should hold (empty pool)
+        verify_invariant(&pool).unwrap();
+    }
+
+    /// Regression: round-half-up in `to_token_amount` can overshoot reserves
+    /// when Q64.64 fractional dust exists (e.g., after fee-bearing swaps).
+    ///
+    /// With 6 decimals and reserve = 99.9999995 tokens (half-base-unit dust):
+    ///   round-half-up: to_token_amount → 100_000_000 → from_token_amount = 100.0 > 99.9999995 → FAIL
+    ///   floor:         to_token_amount_floor → 99_999_999 → from_token_amount = 99.999999 ≤ 99.9999995 → OK
+    #[test]
+    fn test_remove_liquidity_floor_prevents_overshoot() {
+        let mut pool = init_pool(3, 100);
+
+        // Simulate 6-decimal tokens (USDC/USDT/PYUSD)
+        for i in 0..3 {
+            pool.token_decimals[i] = 6;
+        }
+
+        // Inject half-base-unit dust: reserve = 99.9999995 tokens.
+        // 0.5 base unit at 6 decimals = 0.0000005 tokens = ~9223372036855 in Q64.64 raw.
+        let half_base_unit = FixedPoint::from_raw(9223372036855);
+        for i in 0..3 {
+            pool.reserves[i] = pool.reserves[i].checked_sub(half_base_unit).unwrap();
+        }
+
+        // Recompute sphere for the dusty reserves
+        crate::domain::core::recompute_sphere(&mut pool).unwrap();
+        crate::domain::core::update_caches(&mut pool).unwrap();
+
+        // Partial withdrawal (1/3 of liquidity) — tests the common case.
+        // fraction = 100/300 = 1/3. Each return_amount ≈ 33.3333332 tokens.
+        let remove = FixedPoint::from_int(100);
+        let result = remove_liquidity_from_pool(&mut pool, remove);
+
+        assert!(
+            result.is_ok(),
+            "Partial withdrawal with fractional dust should succeed with floor rounding: {:?}",
+            result.err()
+        );
+
+        // Verify floor guarantee: each reconverted amount ≤ computed return
+        let result = result.unwrap();
+        for i in 0..3 {
+            let reconverted = FixedPoint::from_token_amount(
+                result.return_amounts_u64[i],
+                pool.token_decimals[i],
+            )
+            .unwrap();
+            assert!(
+                reconverted.raw <= result.return_amounts[i].raw,
+                "Floor guarantee violated: reconverted {:?} > return {:?} for asset {}",
+                reconverted,
+                result.return_amounts[i],
+                i,
+            );
+        }
+
         verify_invariant(&pool).unwrap();
     }
 

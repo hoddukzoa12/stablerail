@@ -105,10 +105,10 @@ pub fn handler<'info>(
         )?;
     }
 
-    // ── Convert amounts to FixedPoint ──
+    // ── Convert amounts to FixedPoint (decimal-normalized) ──
     let mut deposits_fp = [FixedPoint::zero(); MAX_ASSETS];
     for i in 0..n {
-        deposits_fp[i] = FixedPoint::checked_from_u64(params.amounts[i])?;
+        deposits_fp[i] = FixedPoint::from_token_amount(params.amounts[i], pool.token_decimals[i])?;
     }
 
     // ── Domain logic: update reserves, recompute sphere, verify invariant ──

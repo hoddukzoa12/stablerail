@@ -46,3 +46,8 @@ next-env.d.ts
 
 # keypairs (secrets)
 **/keypair.json
+
+# scripts artifacts
+scripts/node_modules/
+scripts/.dist/
+scripts/mock-*-mint.json
