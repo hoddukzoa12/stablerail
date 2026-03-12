@@ -18,11 +18,11 @@
   },
   "params": {
     "nAssets": 3,
-    "feeRateBps": 30,
+    "feeRateBps": 1,
     "decimals": 6,
     "initialDepositPerAsset": "100000000",
     "maxTradeAmount": "100000000000",
     "maxDailyVolume": "1000000000000"
   },
-  "generatedAt": "2026-03-11T23:57:23.093Z"
+  "generatedAt": "2026-03-12T12:43:54.897Z"
 }

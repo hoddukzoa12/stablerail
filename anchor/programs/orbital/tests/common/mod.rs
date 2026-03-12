@@ -333,5 +333,6 @@ pub fn compute_valid_expected_out(
     let net_in = amount_in_fp.checked_sub(fee).unwrap();
     let expected_out_fp =
         compute_amount_out_analytical(&sphere, &reserves, token_in, token_out, net_in).unwrap();
-    expected_out_fp.to_token_amount(decimals).unwrap()
+    // Floor rounding matches on-chain swap output (to_token_amount_floor)
+    expected_out_fp.to_token_amount_floor(decimals).unwrap()
 }
