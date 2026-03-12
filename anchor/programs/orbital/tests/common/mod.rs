@@ -303,8 +303,8 @@ pub fn build_manage_allowlist_data(action: u8, address: &Pubkey) -> Vec<u8> {
 
 /// Compute the valid expected_amount_out using the orbital crate's analytical solver.
 ///
-/// Uses the exact same Q64.64 math as the on-chain program to guarantee
-/// the sphere invariant holds after the swap.
+/// Uses decimal-normalized Q64.64 math matching the on-chain program.
+/// `decimals` is the SPL token decimals (e.g., 6 for USDC).
 pub fn compute_valid_expected_out(
     n_assets: u8,
     deposit_per_asset: u64,
@@ -312,12 +312,13 @@ pub fn compute_valid_expected_out(
     token_in: usize,
     token_out: usize,
     amount_in: u64,
+    decimals: u8,
 ) -> u64 {
     use orbital::domain::core::{compute_fee, compute_radius_from_deposit};
     use orbital::math::newton::compute_amount_out_analytical;
     use orbital::math::{FixedPoint, Sphere};
 
-    let per_asset = FixedPoint::checked_from_u64(deposit_per_asset).unwrap();
+    let per_asset = FixedPoint::from_token_amount(deposit_per_asset, decimals).unwrap();
     let radius = compute_radius_from_deposit(per_asset, n_assets).unwrap();
     let sphere = Sphere {
         radius,
@@ -327,10 +328,10 @@ pub fn compute_valid_expected_out(
         .map(|_| per_asset)
         .collect();
 
-    let amount_in_fp = FixedPoint::checked_from_u64(amount_in).unwrap();
+    let amount_in_fp = FixedPoint::from_token_amount(amount_in, decimals).unwrap();
     let fee = compute_fee(amount_in_fp, fee_rate_bps).unwrap();
     let net_in = amount_in_fp.checked_sub(fee).unwrap();
     let expected_out_fp =
         compute_amount_out_analytical(&sphere, &reserves, token_in, token_out, net_in).unwrap();
-    expected_out_fp.to_u64().unwrap()
+    expected_out_fp.to_token_amount(decimals).unwrap()
 }

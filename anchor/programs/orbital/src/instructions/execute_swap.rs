@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Token};
 
-use crate::domain::core::swap;
+use crate::domain::core::{recompute_sphere, swap, update_caches};
 use crate::errors::OrbitalError;
 use crate::events::SwapExecuted;
 use crate::math::newton::compute_amount_out_analytical;
@@ -146,6 +146,24 @@ pub fn handler<'info>(
         ),
         amount_out_u64,
     )?;
+
+    // ── Correct reserve for Q64.64 → u64 rounding drift ──
+    // The domain layer subtracts the full FixedPoint amount_out from reserves,
+    // but the SPL transfer moves a rounded u64 (round-half-up). Adjust
+    // reserves to match the actual vault balance, then recompute sphere
+    // so the invariant holds for subsequent swaps.
+    let transferred_fp = FixedPoint::from_token_amount(amount_out_u64, pool.token_decimals[token_out])?;
+    if result.amount_out.raw != transferred_fp.raw {
+        if result.amount_out.raw > transferred_fp.raw {
+            let dust = result.amount_out.checked_sub(transferred_fp)?;
+            pool.reserves[token_out] = pool.reserves[token_out].checked_add(dust)?;
+        } else {
+            let dust = transferred_fp.checked_sub(result.amount_out)?;
+            pool.reserves[token_out] = pool.reserves[token_out].checked_sub(dust)?;
+        }
+        recompute_sphere(pool)?;
+        update_caches(pool)?;
+    }
 
     // ── Emit event ──
     let pool_key = pool.key();

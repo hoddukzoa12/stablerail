@@ -20,7 +20,11 @@ else
 fi
 
 # ── 2. Verify keypair matches program ID ──
-ACTUAL_PUBKEY=$(solana-keygen pubkey "${KEYPAIR_PATH}" 2>/dev/null)
+if ! ACTUAL_PUBKEY=$(solana-keygen pubkey "${KEYPAIR_PATH}" 2>&1); then
+  echo "ERROR: Failed to read keypair at ${KEYPAIR_PATH}:"
+  echo "       ${ACTUAL_PUBKEY}"
+  exit 1
+fi
 if [ "${ACTUAL_PUBKEY}" != "${PROGRAM_ID}" ]; then
   echo "ERROR: Keypair pubkey ${ACTUAL_PUBKEY} does not match program ID ${PROGRAM_ID}"
   echo "       Check anchor/target/deploy/orbital-keypair.json"
@@ -45,8 +49,10 @@ echo "       Deployer: ${DEPLOYER}"
 echo "[3/4] Requesting SOL airdrop..."
 ATTEMPTS=0
 MAX_ATTEMPTS=5
+AIRDROP_SUCCESS=false
 while [ "${ATTEMPTS}" -lt "${MAX_ATTEMPTS}" ]; do
-  if solana airdrop 5 "${DEPLOYER}" --url devnet 2>/dev/null; then
+  if solana airdrop 5 "${DEPLOYER}" --url devnet 2>&1; then
+    AIRDROP_SUCCESS=true
     break
   else
     ATTEMPTS=$((ATTEMPTS + 1))
@@ -55,7 +61,16 @@ while [ "${ATTEMPTS}" -lt "${MAX_ATTEMPTS}" ]; do
   fi
 done
 
-BALANCE=$(solana balance "${DEPLOYER}" --url devnet 2>/dev/null | awk '{print int($1)}')
+if [ "${AIRDROP_SUCCESS}" = false ]; then
+  echo "WARNING: All ${MAX_ATTEMPTS} airdrop attempts failed. Checking existing balance..."
+fi
+
+if ! BALANCE_OUTPUT=$(solana balance "${DEPLOYER}" --url devnet 2>&1); then
+  echo "ERROR: Could not query balance:"
+  echo "       ${BALANCE_OUTPUT}"
+  exit 1
+fi
+BALANCE=$(echo "${BALANCE_OUTPUT}" | awk '{print int($1)}')
 if [ "${BALANCE}" -lt 2 ]; then
   echo "ERROR: Insufficient balance (${BALANCE} SOL). Need at least 2 SOL for deploy."
   echo "       Try: solana airdrop 5 ${DEPLOYER} --url devnet"

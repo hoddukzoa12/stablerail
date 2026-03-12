@@ -47,12 +47,22 @@ fn build_add_liquidity_data(amounts: [u64; MAX_ASSETS]) -> Vec<u8> {
     data
 }
 
-fn build_remove_liquidity_data(liquidity_amount: u64) -> Vec<u8> {
+fn build_remove_liquidity_data(liquidity_raw: i128) -> Vec<u8> {
     let disc = anchor_discriminator("global:remove_liquidity");
     let mut data = Vec::new();
     data.extend_from_slice(&disc);
-    data.extend_from_slice(&liquidity_amount.to_le_bytes());
+    data.extend_from_slice(&liquidity_raw.to_le_bytes());
     data
+}
+
+/// Read position.liquidity.raw (i128) from on-chain account data.
+/// Layout: 8 (discriminator) + 1 (bump) + 32 (pool) + 32 (tick) + 32 (owner) = offset 105.
+fn read_position_liquidity_raw(svm: &LiteSVM, position_pda: &Pubkey) -> i128 {
+    let acc = svm
+        .get_account(position_pda)
+        .expect("position account should exist");
+    let offset = 8 + 1 + 32 + 32 + 32;
+    i128::from_le_bytes(acc.data[offset..offset + 16].try_into().unwrap())
 }
 
 // ── Test Scaffolding ──
@@ -295,10 +305,10 @@ fn test_remove_liquidity_returns_tokens() {
 
     let ps = add_provider_liquidity(&mut tp, add_amount, 0);
 
-    // Now remove all liquidity
-    // liquidity = sum of deposits = 500_000 * 3 = 1_500_000
-    let liquidity_to_remove: u64 = add_amount * (tp.n_assets as u64);
-    let remove_data = build_remove_liquidity_data(liquidity_to_remove);
+    // Now remove all liquidity — read the actual Q64.64 raw value from position
+    let liquidity_raw = read_position_liquidity_raw(&tp.svm, &ps.position_pda);
+    assert!(liquidity_raw > 0, "position should have positive liquidity");
+    let remove_data = build_remove_liquidity_data(liquidity_raw);
 
     let mut remove_accounts = vec![
         AccountMeta::new(ps.provider.pubkey(), true),

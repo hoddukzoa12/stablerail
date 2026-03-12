@@ -9,11 +9,10 @@ use crate::state::{PoolState, PositionState};
 
 #[derive(AnchorSerialize, AnchorDeserialize)]
 pub struct RemoveLiquidityParams {
-    /// Integer liquidity units to remove.
-    /// Liquidity is the sum of per-token deposits (e.g., 500K × 3 assets = 1,500,000).
-    /// For complete withdrawal, pass the integer part of your position's liquidity
-    /// (on-chain `position.liquidity` is Q64.64; extract via `raw >> 64`).
-    pub liquidity_amount: u64,
+    /// Raw Q64.64 liquidity to remove.
+    /// For full withdrawal, pass `position.liquidity.raw` exactly.
+    /// Partial withdrawal: compute the desired fraction of `position.liquidity.raw`.
+    pub liquidity_raw: i128,
 }
 
 /// Accounts for `remove_liquidity`.
@@ -63,7 +62,7 @@ pub fn handler<'info>(
     );
 
     // Validate removal amount against position balance
-    let remove_amount = FixedPoint::checked_from_u64(params.liquidity_amount)?;
+    let remove_amount = FixedPoint::from_raw(params.liquidity_raw);
     require!(
         remove_amount.is_positive(),
         OrbitalError::InvalidLiquidityAmount
@@ -143,7 +142,7 @@ pub fn handler<'info>(
 
     msg!(
         "Liquidity removed: {}, remaining: {}",
-        params.liquidity_amount,
+        remove_amount,
         position.liquidity
     );
     Ok(())

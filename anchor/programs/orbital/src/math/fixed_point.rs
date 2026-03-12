@@ -87,6 +87,7 @@ impl FixedPoint {
         if decimals == 0 {
             return Self::checked_from_u64(raw);
         }
+        require!(decimals <= 18, crate::errors::OrbitalError::MathOverflow);
         let scale = 10u128.pow(decimals as u32);
         let raw_u128 = raw as u128;
         let whole = raw_u128 / scale;
@@ -94,7 +95,7 @@ impl FixedPoint {
         let whole_shifted = whole
             .checked_shl(FRAC_BITS)
             .ok_or_else(|| error!(crate::errors::OrbitalError::MathOverflow))?;
-        // frac < scale <= 10^18, so frac << 64 < 1.8e37 < u128::MAX
+        // decimals <= 18 (enforced above), so frac < scale <= 10^18 and frac << 64 < 1.8e37 < u128::MAX
         let frac_shifted = (frac << FRAC_BITS) / scale;
         let result = whole_shifted
             .checked_add(frac_shifted)
@@ -113,6 +114,7 @@ impl FixedPoint {
         if decimals == 0 {
             return self.to_u64();
         }
+        require!(decimals <= 18, crate::errors::OrbitalError::MathOverflow);
         require!(self.raw >= 0, crate::errors::OrbitalError::MathOverflow);
         let scale = 10u128.pow(decimals as u32);
         let raw_u128 = self.raw as u128;

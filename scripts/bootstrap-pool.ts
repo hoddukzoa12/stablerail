@@ -4,7 +4,7 @@
  * Steps:
  *   1. Creates 3 mock SPL token mints (mock-USDC, mock-USDT, mock-PYUSD)
  *   2. Creates deployer ATAs and mints initial supply
- *   3. Calls initialize_pool (3-asset, 30bps fee, 1000 tokens/asset)
+ *   3. Calls initialize_pool (3-asset, 1bps fee, 100 tokens/asset)
  *   4. Calls create_policy (100K max trade, 1M daily volume)
  *   5. Calls manage_allowlist (adds deployer as executor)
  *   6. Writes devnet-config.json
@@ -48,7 +48,7 @@ const DEVNET_RPC = "https://api.devnet.solana.com";
 const N_ASSETS = 3;
 const FEE_RATE_BPS = 1;
 const DECIMALS = 6;
-// 100 tokens at 6 decimals (Q64.64 safe range for checked_mul)
+// 100 tokens at 6 decimals — modest initial liquidity for devnet testing
 const INITIAL_DEPOSIT_PER_ASSET = BigInt(100_000_000);
 // 2x deposit for swap buffer
 const MINT_AMOUNT_PER_ASSET = BigInt(200_000_000);
@@ -65,10 +65,13 @@ const TOKEN_SYMBOLS = ["mock-USDC", "mock-USDT", "mock-PYUSD"] as const;
 const SCRIPT_DIR = path.dirname(new URL(import.meta.url).pathname ?? ".");
 const ROOT_DIR = path.resolve(SCRIPT_DIR, "..");
 const IDL_PATH = path.join(ROOT_DIR, "anchor/target/idl/orbital.json");
-const WALLET_PATH = path.join(
-  process.env.HOME ?? "~",
-  ".config/solana/id.json"
-);
+const HOME = process.env.HOME;
+if (!HOME) {
+  throw new Error(
+    "HOME environment variable is not set. Cannot locate Solana wallet."
+  );
+}
+const WALLET_PATH = path.join(HOME, ".config/solana/id.json");
 const CONFIG_OUTPUT_PATH = path.join(SCRIPT_DIR, "devnet-config.json");
 
 const MOCK_MINT_KEYPAIR_PATHS = [
@@ -117,8 +120,17 @@ function deriveAllowlistPda(policy: PublicKey): [PublicKey, number] {
 // ────────────────────────────────────────────
 
 function loadKeypair(filePath: string): Keypair {
-  const raw = JSON.parse(fs.readFileSync(filePath, "utf-8")) as number[];
-  return Keypair.fromSecretKey(Uint8Array.from(raw));
+  let raw: number[];
+  try {
+    raw = JSON.parse(fs.readFileSync(filePath, "utf-8")) as number[];
+  } catch (err) {
+    throw new Error(`Failed to parse keypair file ${filePath}: ${err}`);
+  }
+  try {
+    return Keypair.fromSecretKey(Uint8Array.from(raw));
+  } catch (err) {
+    throw new Error(`Invalid keypair data in ${filePath}: ${err}`);
+  }
 }
 
 function loadOrCreateKeypair(filePath: string): Keypair {
@@ -129,6 +141,14 @@ function loadOrCreateKeypair(filePath: string): Keypair {
   fs.writeFileSync(filePath, JSON.stringify(Array.from(kp.secretKey)));
   console.log(`  Generated keypair: ${path.basename(filePath)}`);
   return kp;
+}
+
+function isAnchorError(err: unknown, errorName: string): boolean {
+  if (err && typeof err === "object" && "error" in err) {
+    const anchorErr = err as { error: { errorCode?: { code?: string } } };
+    return anchorErr.error?.errorCode?.code === errorName;
+  }
+  return err instanceof Error && err.message.includes(errorName);
 }
 
 async function accountExists(
@@ -178,29 +198,51 @@ async function main() {
   // Anchor 0.31: new Program(idl, provider) — programId from idl.address
   const program = new anchor.Program(idl, provider);
 
-  // 3. Mock mints
+  // 3. Mock mints — if pool already exists, read mints from on-chain state
+  //    to avoid keypair mismatch when mock-*-mint.json files are missing
   console.log("\n[1/5] Setting up mock token mints...");
-  const mintKeypairs = MOCK_MINT_KEYPAIR_PATHS.map(loadOrCreateKeypair);
+  const [poolPdaCheck] = derivePoolPda(deployer.publicKey);
+  const poolAlreadyExists = await accountExists(connection, poolPdaCheck);
+
   const mintPubkeys: PublicKey[] = [];
 
-  for (let i = 0; i < N_ASSETS; i++) {
-    const kp = mintKeypairs[i];
-    if (await accountExists(connection, kp.publicKey)) {
-      console.log(`  ${TOKEN_SYMBOLS[i]}: ${kp.publicKey.toBase58()} (exists)`);
-    } else {
-      await createMint(
-        connection,
-        deployer,
-        deployer.publicKey,
-        null,
-        DECIMALS,
-        kp
-      );
+  if (poolAlreadyExists) {
+    // Read authoritative mint addresses from on-chain pool state
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const poolData = await (program.account as any).poolState.fetch(poolPdaCheck);
+    const onChainMints = (poolData.tokenMints as PublicKey[]).slice(
+      0,
+      N_ASSETS
+    );
+    for (let i = 0; i < N_ASSETS; i++) {
       console.log(
-        `  ${TOKEN_SYMBOLS[i]}: ${kp.publicKey.toBase58()} (created)`
+        `  ${TOKEN_SYMBOLS[i]}: ${onChainMints[i].toBase58()} (from pool)`
       );
+      mintPubkeys.push(onChainMints[i]);
     }
-    mintPubkeys.push(kp.publicKey);
+  } else {
+    const mintKeypairs = MOCK_MINT_KEYPAIR_PATHS.map(loadOrCreateKeypair);
+    for (let i = 0; i < N_ASSETS; i++) {
+      const kp = mintKeypairs[i];
+      if (await accountExists(connection, kp.publicKey)) {
+        console.log(
+          `  ${TOKEN_SYMBOLS[i]}: ${kp.publicKey.toBase58()} (exists)`
+        );
+      } else {
+        await createMint(
+          connection,
+          deployer,
+          deployer.publicKey,
+          null,
+          DECIMALS,
+          kp
+        );
+        console.log(
+          `  ${TOKEN_SYMBOLS[i]}: ${kp.publicKey.toBase58()} (created)`
+        );
+      }
+      mintPubkeys.push(kp.publicKey);
+    }
   }
 
   // 4. ATAs + mint supply
@@ -329,32 +371,30 @@ async function main() {
   console.log("\n[5/5] Adding deployer to allowlist...");
   if (await accountExists(connection, allowlistPda)) {
     console.log("  Allowlist exists — checking membership...");
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const data = await (program.account as any).allowlistState.fetch(allowlistPda);
-      const count = data.count as number;
-      const addresses = (data.addresses as PublicKey[]).slice(
-        0,
-        count
-      );
-      const found = addresses.some(
-        (a) => a.toBase58() === deployer.publicKey.toBase58()
-      );
-      if (found) {
-        console.log("  Deployer already in allowlist — skipping");
-      } else {
-        await callManageAllowlist(program, deployer, policyPda, allowlistPda);
-      }
-    } catch (err) {
-      console.warn("  Could not fetch allowlist state, retrying add:", err);
-      try {
-        await callManageAllowlist(program, deployer, policyPda, allowlistPda);
-      } catch {
-        console.log("  Deployer likely already in allowlist — continuing");
-      }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data = await (program.account as any).allowlistState.fetch(
+      allowlistPda
+    );
+    const count = data.count as number;
+    const addresses = (data.addresses as PublicKey[]).slice(0, count);
+    const alreadyMember = addresses.some(
+      (a) => a.toBase58() === deployer.publicKey.toBase58()
+    );
+    if (alreadyMember) {
+      console.log("  Deployer already in allowlist — skipping");
+    } else {
+      await callManageAllowlist(program, deployer, policyPda, allowlistPda);
     }
   } else {
-    await callManageAllowlist(program, deployer, policyPda, allowlistPda);
+    try {
+      await callManageAllowlist(program, deployer, policyPda, allowlistPda);
+    } catch (err: unknown) {
+      if (isAnchorError(err, "AlreadyInAllowlist")) {
+        console.log("  Deployer already in allowlist — skipping");
+      } else {
+        throw err;
+      }
+    }
   }
 
   // 9. Write config

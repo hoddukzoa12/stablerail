@@ -99,9 +99,9 @@ pub fn add_liquidity_to_pool(
 /// Workflow:
 ///   1. Validate removal amount
 ///   2. Compute LP's fraction: remove_amount / total_interior_liquidity
-///   3. Calculate proportional per-token returns (truncated to u64)
+///   3. Calculate proportional per-token returns (denormalized to SPL base units via round-half-up)
 ///   4. Reject if all returns round to zero (prevents zero-payout burns)
-///   5. Subtract truncated returns from reserves (aligned with SPL transfers)
+///   5. Subtract denormalized returns from reserves (aligned with SPL transfers)
 ///   6. Subtract from total_interior_liquidity
 ///   7. Recompute sphere radius
 ///   8. Update caches

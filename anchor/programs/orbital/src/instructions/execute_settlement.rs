@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 use anchor_lang::solana_program::hash::hashv;
 use anchor_spl::token::{self, Token};
 
-use crate::domain::core::{swap, update_caches};
+use crate::domain::core::{recompute_sphere, swap, update_caches};
 use crate::errors::OrbitalError;
 use crate::events::SettlementExecuted;
 use crate::math::newton::compute_amount_out_analytical;
@@ -215,14 +215,24 @@ pub fn handler<'info>(
         amount_out_u64,
     )?;
 
-    // ── Correct reserve for Q64.64 → u64 truncation drift ──
-    // execute_swap subtracts the full FixedPoint amount_out from reserves,
-    // but the SPL transfer only moves the truncated u64. Add back the
-    // fractional dust so reserves match the actual vault balance.
+    // ── Correct reserve for Q64.64 → u64 rounding drift ──
+    // The domain layer subtracts the full FixedPoint amount_out from reserves,
+    // but the SPL transfer moves a rounded u64 (round-half-up). The drift
+    // can go in either direction: positive when rounding down, negative when
+    // rounding up. Adjust reserves to match the actual vault balance.
     let transferred_fp = FixedPoint::from_token_amount(amount_out_u64, pool.token_decimals[token_out])?;
-    let truncation_dust = result.amount_out.checked_sub(transferred_fp)?;
-    if truncation_dust.raw > 0 {
-        pool.reserves[token_out] = pool.reserves[token_out].checked_add(truncation_dust)?;
+    if result.amount_out.raw != transferred_fp.raw {
+        // reserves currently reflect (old - amount_out); correct to (old - transferred_fp)
+        if result.amount_out.raw > transferred_fp.raw {
+            // Rounded down: vault kept more than reserves think → add dust back
+            let dust = result.amount_out.checked_sub(transferred_fp)?;
+            pool.reserves[token_out] = pool.reserves[token_out].checked_add(dust)?;
+        } else {
+            // Rounded up: vault lost more than reserves think → subtract dust
+            let dust = transferred_fp.checked_sub(result.amount_out)?;
+            pool.reserves[token_out] = pool.reserves[token_out].checked_sub(dust)?;
+        }
+        recompute_sphere(pool)?;
         update_caches(pool)?;
     }
 
