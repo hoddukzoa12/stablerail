@@ -36,6 +36,20 @@ fn u64_to_fp_raw(v: u64) -> i128 {
     (v as i128) << FRAC_BITS
 }
 
+/// Convert raw SPL token amount to Q64.64 raw i128 (matches FixedPoint::from_token_amount)
+fn token_amount_to_fp_raw(amount: u64, decimals: u8) -> i128 {
+    if decimals == 0 {
+        return u64_to_fp_raw(amount);
+    }
+    let scale = 10u128.pow(decimals as u32);
+    let raw_u128 = amount as u128;
+    let whole = raw_u128 / scale;
+    let frac = raw_u128 % scale;
+    let whole_shifted = whole << FRAC_BITS;
+    let frac_shifted = (frac << FRAC_BITS) / scale;
+    (whole_shifted + frac_shifted) as i128
+}
+
 // ── Account Data Readers ──
 
 /// Read PolicyState fields from account data (after 8-byte Anchor discriminator).
@@ -234,6 +248,7 @@ fn send_update_policy(
     let accounts = vec![
         AccountMeta::new(signer.pubkey(), true),
         AccountMeta::new(*policy_pda, false),
+        AccountMeta::new_readonly(env.pool_pda, false),
     ];
 
     let ix = Instruction {
@@ -316,12 +331,12 @@ fn test_create_policy() {
     assert_eq!(policy.pool, env.pool_pda, "pool mismatch");
     assert_eq!(
         policy.max_trade_amount_raw,
-        u64_to_fp_raw(max_trade),
+        token_amount_to_fp_raw(max_trade, 6),
         "max_trade_amount mismatch"
     );
     assert_eq!(
         policy.max_daily_volume_raw,
-        u64_to_fp_raw(max_daily),
+        token_amount_to_fp_raw(max_daily, 6),
         "max_daily_volume mismatch"
     );
     assert!(policy.is_active, "policy should be active by default");
@@ -354,12 +369,12 @@ fn test_update_policy() {
     let policy = read_policy_data(&env.svm, &policy_pda);
     assert_eq!(
         policy.max_trade_amount_raw,
-        u64_to_fp_raw(new_max_trade),
+        token_amount_to_fp_raw(new_max_trade, 6),
         "max_trade_amount should be updated"
     );
     assert_eq!(
         policy.max_daily_volume_raw,
-        u64_to_fp_raw(10_000_000),
+        token_amount_to_fp_raw(10_000_000, 6),
         "max_daily_volume should be unchanged"
     );
     assert!(!policy.is_active, "policy should be deactivated");
