@@ -137,7 +137,7 @@ export function UserPositions({
   };
 
   return (
-    <Card variant="glass" className="p-5">
+    <Card variant="glass" className="flex max-h-[420px] flex-col p-5">
       {/* Tab button group */}
       <div className="mb-4 flex items-center gap-1 rounded-lg bg-surface-2 p-1">
         <button
@@ -176,7 +176,7 @@ export function UserPositions({
 
       {/* ── Positions tab ── */}
       {activeTab === "positions" && (
-        <>
+        <div className="min-h-0 flex-1 overflow-y-auto">
           {isLoading && positions.length === 0 && (
             <p className="py-6 text-center text-sm text-text-tertiary">
               Loading positions...
@@ -402,12 +402,12 @@ export function UserPositions({
               </a>
             </div>
           )}
-        </>
+        </div>
       )}
 
       {/* ── Transactions tab ── */}
       {activeTab === "transactions" && (
-        <>
+        <div className="min-h-0 flex-1 overflow-y-auto">
           {isLoadingTransactions && transactions.length === 0 && (
             <p className="py-6 text-center text-sm text-text-tertiary">
               Loading transactions...
@@ -465,7 +465,7 @@ export function UserPositions({
               );
             })}
           </div>
-        </>
+        </div>
       )}
     </Card>
   );
