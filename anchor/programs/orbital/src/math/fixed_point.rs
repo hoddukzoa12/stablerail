@@ -110,6 +110,11 @@ impl FixedPoint {
     ///
     /// Transforms whole-token FixedPoint values (e.g., FixedPoint(1.5)) back into
     /// base-unit amounts (1_500_000 for 6 decimals).
+    ///
+    /// Uses round-half-up to recover the original value after from_token_amount's
+    /// floor truncation. Suitable for **deposit** paths where accuracy is priority.
+    /// For **withdrawal** paths, use `to_token_amount_floor` to avoid rounding
+    /// above the available reserve.
     pub fn to_token_amount(&self, decimals: u8) -> Result<u64> {
         if decimals == 0 {
             return self.to_u64();
@@ -126,6 +131,38 @@ impl FixedPoint {
             // Round-half-up: add 0.5 ULP before truncating to recover
             // the original value after from_token_amount's floor.
             .checked_add((frac * scale + (1u128 << (FRAC_BITS - 1))) >> FRAC_BITS)
+            .ok_or_else(|| error!(crate::errors::OrbitalError::MathOverflow))?;
+        if result > u64::MAX as u128 {
+            return Err(error!(crate::errors::OrbitalError::MathOverflow));
+        }
+        Ok(result as u64)
+    }
+
+    /// Convert FixedPoint to raw SPL token amount using **floor** rounding.
+    ///
+    /// Unlike `to_token_amount` (round-half-up), this always truncates toward
+    /// zero. Used for **withdrawal** paths where rounding must favor the pool:
+    /// LP receives at most their proportional share, never more.
+    ///
+    /// Without floor rounding, round-half-up can produce a u64 that, when
+    /// reconverted via `from_token_amount`, exceeds the on-chain reserve
+    /// (especially after swaps leave fractional Q64.64 dust), causing
+    /// `checked_sub` to fail and blocking valid withdrawals.
+    pub fn to_token_amount_floor(&self, decimals: u8) -> Result<u64> {
+        if decimals == 0 {
+            return self.to_u64();
+        }
+        require!(decimals <= 18, crate::errors::OrbitalError::MathOverflow);
+        require!(self.raw >= 0, crate::errors::OrbitalError::MathOverflow);
+        let scale = 10u128.pow(decimals as u32);
+        let raw_u128 = self.raw as u128;
+        let whole = raw_u128 >> FRAC_BITS;
+        let frac = raw_u128 & ((1u128 << FRAC_BITS) - 1);
+        let result = whole
+            .checked_mul(scale)
+            .ok_or_else(|| error!(crate::errors::OrbitalError::MathOverflow))?
+            // Floor: truncate without rounding up — LP gets ≤ proportional share
+            .checked_add((frac * scale) >> FRAC_BITS)
             .ok_or_else(|| error!(crate::errors::OrbitalError::MathOverflow))?;
         if result > u64::MAX as u128 {
             return Err(error!(crate::errors::OrbitalError::MathOverflow));
@@ -696,5 +733,83 @@ mod tests {
         let fp = FixedPoint::from_token_amount(val, 6).unwrap();
         let back = fp.to_token_amount(6).unwrap();
         assert_eq!(back, val, "1B tokens roundtrip failed");
+    }
+
+    // ══════════════════════════════════════════════
+    // to_token_amount_floor tests
+    // ══════════════════════════════════════════════
+
+    #[test]
+    fn test_floor_vs_roundup_difference() {
+        // Create a FixedPoint that, with 6 decimals, has fractional dust
+        // that makes round-half-up overshoot vs floor.
+        //
+        // FixedPoint representing 99.9999997 tokens:
+        //   floor → 99_999_999 (truncates 0.7 sub-unit)
+        //   round-half-up → 100_000_000 (rounds 99999999.7 → 100000000)
+        let near_100 = FixedPoint::from_token_amount(100_000_000, 6).unwrap(); // exactly 100.0
+        let tiny = FixedPoint::from_raw(55); // sub-ULP dust
+        let dusty = near_100.checked_sub(tiny).unwrap();
+
+        let floor_val = dusty.to_token_amount_floor(6).unwrap();
+        let round_val = dusty.to_token_amount(6).unwrap();
+
+        // Floor should be ≤ the round-half-up value
+        assert!(floor_val <= round_val, "floor should be ≤ round-half-up");
+
+        // For this specific case, floor should be strictly less (the dust triggers different rounding)
+        // This demonstrates the bug: round_val might reconstruct to > original reserve
+        let floor_fp = FixedPoint::from_token_amount(floor_val, 6).unwrap();
+        assert!(
+            floor_fp.raw <= dusty.raw,
+            "floor reconversion must not exceed original: floor_fp={:?}, dusty={:?}",
+            floor_fp,
+            dusty
+        );
+    }
+
+    #[test]
+    fn test_floor_exact_values() {
+        // Clean values produce identical results for floor and round-half-up
+        let fp = FixedPoint::from_int(1); // exactly 1.0
+        assert_eq!(fp.to_token_amount(6).unwrap(), fp.to_token_amount_floor(6).unwrap());
+
+        let fp2 = FixedPoint::from_fraction(3, 2).unwrap(); // 1.5
+        assert_eq!(fp2.to_token_amount(6).unwrap(), fp2.to_token_amount_floor(6).unwrap());
+    }
+
+    #[test]
+    fn test_floor_zero() {
+        let fp = FixedPoint::zero();
+        assert_eq!(fp.to_token_amount_floor(6).unwrap(), 0);
+    }
+
+    #[test]
+    fn test_floor_negative_fails() {
+        let fp = FixedPoint::from_int(-1);
+        assert!(fp.to_token_amount_floor(6).is_err());
+    }
+
+    #[test]
+    fn test_floor_zero_decimals() {
+        let fp = FixedPoint::from_int(42);
+        assert_eq!(fp.to_token_amount_floor(0).unwrap(), 42);
+    }
+
+    #[test]
+    fn test_floor_never_exceeds_original() {
+        // For any positive FixedPoint, floor reconversion must not exceed original.
+        // Test a range of values with fractional dust.
+        for shift in 0..20u32 {
+            let base = FixedPoint::from_token_amount(1_000_000u64 + shift as u64, 6).unwrap();
+            let dusty = FixedPoint::from_raw(base.raw - 1); // subtract 1 raw unit
+            let floor_u64 = dusty.to_token_amount_floor(6).unwrap();
+            let reconverted = FixedPoint::from_token_amount(floor_u64, 6).unwrap();
+            assert!(
+                reconverted.raw <= dusty.raw,
+                "floor reconversion exceeded original at shift={}",
+                shift
+            );
+        }
     }
 }
