@@ -11,13 +11,9 @@ PROGRAM_ID="C7dFX4QVV8QCdzP4fZi3Vcx8oP1cYhTaXD7kvvat8W1w"
 echo "=== Orbital Devnet Deploy ==="
 echo ""
 
-# ── 1. Verify or build .so ──
-if [ ! -f "${SO_PATH}" ]; then
-  echo "[1/4] .so not found — building SBF..."
-  (cd "${ANCHOR_DIR}" && anchor build)
-else
-  echo "[1/4] Found orbital.so — skipping build"
-fi
+# ── 1. Always rebuild to avoid stale artifact deployment ──
+echo "[1/4] Building SBF (anchor build)..."
+(cd "${ANCHOR_DIR}" && anchor build)
 
 # ── 2. Verify keypair matches program ID ──
 if ! ACTUAL_PUBKEY=$(solana-keygen pubkey "${KEYPAIR_PATH}" 2>&1); then
