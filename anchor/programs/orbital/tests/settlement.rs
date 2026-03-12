@@ -517,6 +517,7 @@ fn test_settlement_rejects_inactive_policy() {
     let update_accounts = vec![
         AccountMeta::new(env.authority.pubkey(), true),
         AccountMeta::new(env.policy_pda, false),
+        AccountMeta::new_readonly(env.pool_pda, false),
     ];
     let update_ix = Instruction {
         program_id: PROGRAM_ID,
