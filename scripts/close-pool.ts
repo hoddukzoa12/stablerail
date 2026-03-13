@@ -27,7 +27,7 @@ import * as path from "path";
 // ────────────────────────────────────────────
 
 const PROGRAM_ID = new PublicKey(
-  "CijRTA2wK1qLLHdYLP2jMEyac9NBZVUtWTUbiTYMPJda"
+  "ATPBdhBzBz25JoQ1faaBd2prdHm93r8VxBjUv17Mfvj1"
 );
 const DEVNET_RPC = "https://api.devnet.solana.com";
 

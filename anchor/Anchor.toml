@@ -6,7 +6,7 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-orbital = "CijRTA2wK1qLLHdYLP2jMEyac9NBZVUtWTUbiTYMPJda"
+orbital = "ATPBdhBzBz25JoQ1faaBd2prdHm93r8VxBjUv17Mfvj1"
 
 [registry]
 url = "https://api.apr.dev"
