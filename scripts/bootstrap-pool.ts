@@ -4,8 +4,8 @@
  * Steps:
  *   1. Creates 3 mock SPL token mints (mock-USDC, mock-USDT, mock-PYUSD)
  *   2. Creates deployer ATAs and mints initial supply
- *   3. Calls initialize_pool (3-asset, 1bps fee, 100 tokens/asset)
- *   4. Calls create_policy (100K max trade, 1M daily volume)
+ *   3. Calls initialize_pool (3-asset, 1bps fee, $50M/asset)
+ *   4. Calls create_policy ($50M max trade, $500M daily volume)
  *   5. Calls manage_allowlist (adds deployer as executor)
  *   6. Writes devnet-config.json
  *
@@ -41,20 +41,20 @@ import * as path from "path";
 // ────────────────────────────────────────────
 
 const PROGRAM_ID = new PublicKey(
-  "C7dFX4QVV8QCdzP4fZi3Vcx8oP1cYhTaXD7kvvat8W1w"
+  "ATPBdhBzBz25JoQ1faaBd2prdHm93r8VxBjUv17Mfvj1"
 );
 const DEVNET_RPC = "https://api.devnet.solana.com";
 
 const N_ASSETS = 3;
 const FEE_RATE_BPS = 1;
 const DECIMALS = 6;
-// 100 tokens at 6 decimals — modest initial liquidity for devnet testing
-const INITIAL_DEPOSIT_PER_ASSET = BigInt(100_000_000);
+// $50M per asset at 6 decimals — Curve-scale demo liquidity ($150M TVL)
+const INITIAL_DEPOSIT_PER_ASSET = BigInt(50_000_000_000_000);
 // 2x deposit for swap buffer
-const MINT_AMOUNT_PER_ASSET = BigInt(200_000_000);
-// Policy: 100K tokens per trade, 1M tokens/day
-const MAX_TRADE_AMOUNT = BigInt(100_000_000_000);
-const MAX_DAILY_VOLUME = BigInt(1_000_000_000_000);
+const MINT_AMOUNT_PER_ASSET = BigInt(100_000_000_000_000);
+// Policy: $50M max per trade, $500M daily volume (scaled for $150M TVL)
+const MAX_TRADE_AMOUNT = BigInt(50_000_000_000_000);
+const MAX_DAILY_VOLUME = BigInt(500_000_000_000_000);
 
 const TOKEN_SYMBOLS = ["mock-USDC", "mock-USDT", "mock-PYUSD"] as const;
 

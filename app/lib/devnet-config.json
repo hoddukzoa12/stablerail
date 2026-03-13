@@ -1,28 +1,28 @@
 {
   "network": "devnet",
   "rpcUrl": "https://api.devnet.solana.com",
-  "programId": "C7dFX4QVV8QCdzP4fZi3Vcx8oP1cYhTaXD7kvvat8W1w",
+  "programId": "ATPBdhBzBz25JoQ1faaBd2prdHm93r8VxBjUv17Mfvj1",
   "deployer": "3JGigvUgkmoufhW4q35Co2HfpGqVgvQvPn68r1GzDGrs",
-  "pool": "6jJYUBT7Q1mixxqRx8rGRmDnPqkdjdrNFsiinTpu5M9p",
-  "policy": "5g79BNUgemMXk5msofSu7pmQQmEfvPfqEWvFm8Su1g7X",
-  "allowlist": "BVF5KrDgaqJETahCsZC16EsGRNxeuU7Bto8bVwn3F3Bd",
+  "pool": "4eEVEEgB6FMDvvRV2AFEUhwgxVnQiXZQuRJ2QxMBNiMW",
+  "policy": "4L8myvA8jcAESo3EqEE7ZbL5C71BYhHNbkBQ793tatMo",
+  "allowlist": "4pwSQoBVrsVxbqnCj3FK9YwfgdR86ig9N12166cTPbP6",
   "mints": {
     "mock-USDC": "FNbLLK2RcFAgmCu8ssHD4smu9udd9E5d7Cj9VmjnPAzc",
     "mock-USDT": "7pXn9qaBoE9JsQ6DbKGNRfXPRvqd8oi1YfyYtRRgxmwV",
     "mock-PYUSD": "6E15qXfBKzudpA9vSdvQAZRZKEB9zbCfHpKnkDGWmwBD"
   },
   "vaults": {
-    "mock-USDC": "BvDKaDdZ99DYd9hx1TkeP442AaaZ2xDMe2bT3BJ8R1QK",
-    "mock-USDT": "7psfCZTo8dyphvVyrh1giSw7vYCfRiHdagzXvsegYAtD",
-    "mock-PYUSD": "71tmdbKTqg5o68Q6Ar9BHLKQzrGCcYiSHqpqr1TpvDdh"
+    "mock-USDC": "Hkw2svAFz3qyRzGe3bE2fkywnMooNq4hUSTuiZGNbDVu",
+    "mock-USDT": "HQjXDxs8n8STk3a9nacuNcUNidWntV9t1oYF7WHcssZw",
+    "mock-PYUSD": "8fEB6tdRHAQ9F25Q9Ldz6kcRBGQGd98ioWd5JqorXPxQ"
   },
   "params": {
     "nAssets": 3,
     "feeRateBps": 1,
     "decimals": 6,
-    "initialDepositPerAsset": "100000000",
-    "maxTradeAmount": "100000000000",
-    "maxDailyVolume": "1000000000000"
+    "initialDepositPerAsset": "50000000000000",
+    "maxTradeAmount": "50000000000000",
+    "maxDailyVolume": "500000000000000"
   },
-  "generatedAt": "2026-03-12T12:43:54.897Z"
+  "generatedAt": "2026-03-13T09:05:06.680Z"
 }
