@@ -128,47 +128,49 @@ export function TickSelector({
               <div className="text-[11px] font-medium text-text-secondary">
                 Select existing tick
               </div>
-              {interiorTicks.map((tick) => (
-                <button
-                  key={tick.address}
-                  type="button"
-                  onClick={() =>
-                    onChange({
-                      mode: "concentrated",
-                      tickAddress: tick.address,
-                    })
-                  }
-                  className={`w-full cursor-pointer rounded-lg p-2.5 text-left transition-all ${
-                    selection.tickAddress === tick.address
-                      ? "bg-accent-blue/15 ring-1 ring-accent-blue/40"
-                      : "bg-surface-2 hover:bg-surface-3"
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-xs text-text-primary">
-                        k = {fmt(tick.kDisplay)}
+              <div className="max-h-[160px] space-y-1.5 overflow-y-auto pr-1">
+                {interiorTicks.map((tick) => (
+                  <button
+                    key={tick.address}
+                    type="button"
+                    onClick={() =>
+                      onChange({
+                        mode: "concentrated",
+                        tickAddress: tick.address,
+                      })
+                    }
+                    className={`w-full cursor-pointer rounded-lg p-2.5 text-left transition-all ${
+                      selection.tickAddress === tick.address
+                        ? "bg-accent-blue/15 ring-1 ring-accent-blue/40"
+                        : "bg-surface-2 hover:bg-surface-3"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs text-text-primary">
+                          k = {fmt(tick.kDisplay)}
+                        </span>
+                        <Badge
+                          variant={
+                            tick.status === "Interior" ? "success" : "warning"
+                          }
+                        >
+                          {tick.status}
+                        </Badge>
+                      </div>
+                      <span className="text-[10px] text-text-tertiary">
+                        {fmt(tick.capitalEfficiency)}× eff.
                       </span>
-                      <Badge
-                        variant={
-                          tick.status === "Interior" ? "success" : "warning"
-                        }
-                      >
-                        {tick.status}
-                      </Badge>
                     </div>
-                    <span className="text-[10px] text-text-tertiary">
-                      {fmt(tick.capitalEfficiency)}× eff.
-                    </span>
-                  </div>
-                  <div className="mt-1 flex gap-3 text-[10px] text-text-tertiary">
-                    <span>
-                      Range: {fmt(tick.xMin)} – {fmt(tick.xMax)}
-                    </span>
-                    <span>Depeg: {fmt(tick.depegPrice)}</span>
-                  </div>
-                </button>
-              ))}
+                    <div className="mt-1 flex gap-3 text-[10px] text-text-tertiary">
+                      <span>
+                        Range: {fmt(tick.xMin)} – {fmt(tick.xMax)}
+                      </span>
+                      <span>Depeg: {fmt(tick.depegPrice)}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
           ) : null}
 

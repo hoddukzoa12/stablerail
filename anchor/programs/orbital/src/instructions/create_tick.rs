@@ -29,7 +29,7 @@ pub struct CreateTick<'info> {
         seeds = [b"pool", pool.authority.as_ref()],
         bump = pool.bump,
     )]
-    pub pool: Account<'info, PoolState>,
+    pub pool: Box<Account<'info, PoolState>>,
 
     #[account(
         init,
@@ -42,7 +42,7 @@ pub struct CreateTick<'info> {
         ],
         bump,
     )]
-    pub tick: Account<'info, TickState>,
+    pub tick: Box<Account<'info, TickState>>,
 
     pub system_program: Program<'info, System>,
 }

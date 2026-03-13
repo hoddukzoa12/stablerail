@@ -80,9 +80,20 @@ export function usePoolTicks(nAssets: number = 3) {
         );
       }
 
+      // Deduplicate ticks with the same k value — keep the one with highest liquidity
+      const byK = new Map<string, TickInfo>();
+      for (const t of parsed) {
+        const key = t.kRaw.toString();
+        const existing = byK.get(key);
+        if (!existing || t.liquidityRaw > existing.liquidityRaw) {
+          byK.set(key, t);
+        }
+      }
+      const deduped = Array.from(byK.values());
+
       // Sort by k value ascending
-      parsed.sort((a, b) => a.kDisplay - b.kDisplay);
-      setTicks(parsed);
+      deduped.sort((a, b) => a.kDisplay - b.kDisplay);
+      setTicks(deduped);
       setError(null);
     } catch (err) {
       console.error("Failed to fetch pool ticks:", err);

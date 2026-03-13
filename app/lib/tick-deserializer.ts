@@ -20,7 +20,7 @@
  *   186     created_at               i64 (LE)      8
  *   194     reserves[0..8].raw       [i128; 8]     128
  *   322     _reserved                [u8; 32]      32
- *   ------  Total: 374 bytes (= TickState::SIZE)
+ *   ------  Total: 354 bytes (= TickState::SIZE)
  */
 
 import { readI128LE, q6464ToNumber } from "./format-utils";
@@ -29,7 +29,7 @@ import { readI128LE, q6464ToNumber } from "./format-utils";
 const TICK_DISCRIMINATOR = new Uint8Array([137, 76, 253, 128, 85, 226, 97, 148]);
 
 /** Minimum account data size for a valid TickState */
-const MIN_TICK_SIZE = 374;
+const MIN_TICK_SIZE = 354;
 
 /** Maximum assets supported (matches on-chain MAX_ASSETS) */
 const MAX_ASSETS = 8;

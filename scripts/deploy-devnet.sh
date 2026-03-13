@@ -6,7 +6,7 @@ ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 ANCHOR_DIR="${ROOT_DIR}/anchor"
 SO_PATH="${ANCHOR_DIR}/target/deploy/orbital.so"
 KEYPAIR_PATH="${ANCHOR_DIR}/target/deploy/orbital-keypair.json"
-PROGRAM_ID="ATPBdhBzBz25JoQ1faaBd2prdHm93r8VxBjUv17Mfvj1"
+PROGRAM_ID="B8n8gTjF5A4d6tmVFnz5ZCY3bKy5cfEQ1ZhYogbSxbfU"
 
 echo "=== Orbital Devnet Deploy ==="
 echo ""

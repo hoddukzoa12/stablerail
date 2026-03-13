@@ -46,7 +46,7 @@ impl TickState {
     //   8   = created_at (i64)
     //   128 = reserves (16 * MAX_ASSETS=8)
     //   32  = _reserved
-    // total = 374
+    // total = 354
     pub const SIZE: usize = 8 + 1 + 32 + 16 + 1 + 16 + 16 + 16 + 16 + 16 + 16 + 32 + 8
         + (16 * MAX_ASSETS) // reserves
         + 32;               // _reserved
