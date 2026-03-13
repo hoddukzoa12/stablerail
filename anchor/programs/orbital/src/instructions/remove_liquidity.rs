@@ -111,11 +111,26 @@ pub fn handler<'info>(
         );
         require!(tick.pool == pool.key(), OrbitalError::InvalidVaultAddress);
 
-        // Subtract proportional returns from tick reserves
+        // Subtract proportional share from tick reserves.
+        // Per-tick reserves may be stale (interior swaps don't update them),
+        // so use min(return_amount, tick_reserve) to prevent underflow.
+        // This is safe because tick.reserves is accounting-only — actual token
+        // transfers use pool-level return_amounts computed from pool reserves.
         for i in 0..n {
-            tick.reserves[i] = tick.reserves[i].checked_sub(result.return_amounts[i])?;
+            let sub = if result.return_amounts[i].raw > tick.reserves[i].raw {
+                tick.reserves[i]
+            } else {
+                result.return_amounts[i]
+            };
+            tick.reserves[i] = tick.reserves[i].checked_sub(sub)?;
         }
-        tick.liquidity = tick.liquidity.checked_sub(remove_amount)?;
+        // Similarly, cap liquidity subtraction to prevent underflow
+        let liq_sub = if remove_amount.raw > tick.liquidity.raw {
+            tick.liquidity
+        } else {
+            remove_amount
+        };
+        tick.liquidity = tick.liquidity.checked_sub(liq_sub)?;
 
         // Serialize tick back to account
         save_tick_state(tick_acc, &tick)?;

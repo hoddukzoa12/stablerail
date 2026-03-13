@@ -383,8 +383,18 @@ fn apply_partial_swap(
     amount_in: FixedPoint,
     amount_out: FixedPoint,
 ) -> Result<()> {
-    pool.reserves[token_in] = pool.reserves[token_in].checked_add(amount_in)?;
-    pool.reserves[token_out] = pool.reserves[token_out].checked_sub(amount_out)?;
+    let new_in = pool.reserves[token_in].checked_add(amount_in)?;
+    // Guard: reserve_in must not exceed radius (same invariant as single-segment path).
+    // Prevents ambiguous analytical roots and unsafe pricing branches.
+    require!(
+        new_in.raw <= pool.sphere.radius.raw,
+        OrbitalError::ReserveExceedsRadius
+    );
+    pool.reserves[token_in] = new_in;
+
+    let new_out = pool.reserves[token_out].checked_sub(amount_out)?;
+    require!(new_out.raw >= 0, OrbitalError::InsufficientLiquidity);
+    pool.reserves[token_out] = new_out;
 
     // Update volume tracking
     pool.total_volume = pool.total_volume.checked_add(amount_in)?;

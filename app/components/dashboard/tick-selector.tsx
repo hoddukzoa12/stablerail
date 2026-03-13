@@ -61,10 +61,10 @@ export function TickSelector({
     return computeTickPreview(k, radius, n);
   }, [kInput, radius, n]);
 
-  // Convert k number to Q64.64 raw bigint
-  const kRawFromInput = useMemo(() => {
-    const k = parseFloat(kInput);
-    if (!kInput || isNaN(k)) return null;
+  // Convert a k number string to Q64.64 raw bigint
+  function computeKRaw(input: string): bigint | null {
+    const k = parseFloat(input);
+    if (!input || isNaN(k)) return null;
     // Q64.64: raw = k * 2^64
     const SCALE = 1n << 64n;
     const negative = k < 0;
@@ -75,7 +75,9 @@ export function TickSelector({
     let raw = (intPart << 64n) + fracScaled;
     if (negative) raw = -raw;
     return raw;
-  }, [kInput]);
+  }
+
+  const kRawFromInput = useMemo(() => computeKRaw(kInput), [kInput]);
 
   const interiorTicks = ticks.filter((t) => t.status === "Interior");
 
@@ -196,10 +198,13 @@ export function TickSelector({
                     const v = e.target.value;
                     if (/^[0-9]*\.?[0-9]*$/.test(v)) {
                       setKInput(v);
-                      if (v && !isNaN(parseFloat(v)) && kRawFromInput) {
+                      // Compute kRaw from the current input value directly
+                      // (not from stale memo which lags by one render)
+                      const freshKRaw = computeKRaw(v);
+                      if (freshKRaw) {
                         onChange({
                           mode: "concentrated",
-                          kRaw: kRawFromInput,
+                          kRaw: freshKRaw,
                         });
                       }
                     }
