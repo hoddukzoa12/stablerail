@@ -7,8 +7,7 @@
  * Re-generate after bootstrap: cd scripts && npm run bootstrap
  */
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const config = require("../../scripts/devnet-config.json");
+import config from "./devnet-config.json";
 
 export const PROGRAM_ID: string = config.programId;
 export const POOL_PDA: string = config.pool;
