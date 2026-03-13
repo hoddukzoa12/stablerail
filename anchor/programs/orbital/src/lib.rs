@@ -9,7 +9,7 @@ pub mod state;
 
 use instructions::*;
 
-declare_id!("C7dFX4QVV8QCdzP4fZi3Vcx8oP1cYhTaXD7kvvat8W1w");
+declare_id!("CijRTA2wK1qLLHdYLP2jMEyac9NBZVUtWTUbiTYMPJda");
 
 #[program]
 pub mod orbital {
