@@ -5,7 +5,8 @@ use crate::domain::liquidity::remove_liquidity_from_pool;
 use crate::errors::OrbitalError;
 use crate::events::LiquidityRemoved;
 use crate::math::FixedPoint;
-use crate::state::{PoolState, PositionState, TickState};
+use crate::math::sphere::MAX_ASSETS;
+use crate::state::{PoolState, PositionState, TickState, TickStatus};
 
 #[derive(AnchorSerialize, AnchorDeserialize)]
 pub struct RemoveLiquidityParams {
@@ -95,11 +96,9 @@ pub fn handler<'info>(
         );
     }
 
-    // ── Domain logic: compute returns, update reserves, verify invariant ──
+    // ── Tick-specific logic: handle boundary vs interior withdrawal ──
     let pool = &mut ctx.accounts.pool;
-    let result = remove_liquidity_from_pool(pool, remove_amount)?;
 
-    // ── Tick-specific logic: subtract from per-tick reserves ──
     if has_tick {
         let tick_acc = &remaining[2 * n];
         let mut tick = load_tick_state(tick_acc)?;
@@ -110,6 +109,111 @@ pub fn handler<'info>(
             OrbitalError::InvalidVaultAddress
         );
         require!(tick.pool == pool.key(), OrbitalError::InvalidVaultAddress);
+
+        if tick.status == TickStatus::Boundary {
+            // Boundary tick: liquidity is NOT part of pool.total_interior_liquidity.
+            // flip_tick already subtracted this tick's reserves from pool.reserves
+            // and moved liquidity to total_boundary_liquidity.
+            // We must subtract from total_boundary_liquidity instead.
+            let liq_sub = if remove_amount.raw > tick.liquidity.raw {
+                tick.liquidity
+            } else {
+                remove_amount
+            };
+            pool.total_boundary_liquidity = pool
+                .total_boundary_liquidity
+                .checked_sub(liq_sub)?;
+
+            // For boundary ticks, return amounts are computed from tick's own
+            // reserves (which were snapshotted at crossing time), not pool reserves.
+            let tick_fraction = if tick.liquidity.is_positive() {
+                remove_amount.checked_div(tick.liquidity)?
+            } else {
+                FixedPoint::zero()
+            };
+
+            tick.liquidity = tick.liquidity.checked_sub(liq_sub)?;
+
+            // Compute return amounts from tick reserves
+            let mut return_amounts = [FixedPoint::zero(); MAX_ASSETS];
+            let mut return_amounts_u64 = [0u64; MAX_ASSETS];
+            for i in 0..n {
+                return_amounts[i] = tick.reserves[i].checked_mul(tick_fraction)?;
+                return_amounts_u64[i] = return_amounts[i]
+                    .to_token_amount_floor(pool.token_decimals[i])?;
+                let sub = if return_amounts[i].raw > tick.reserves[i].raw {
+                    tick.reserves[i]
+                } else {
+                    return_amounts[i]
+                };
+                tick.reserves[i] = tick.reserves[i].checked_sub(sub)?;
+            }
+
+            // Reject if all returns round to zero
+            let has_nonzero = return_amounts_u64[..n].iter().any(|&a| a > 0);
+            require!(has_nonzero, OrbitalError::WithdrawalTooSmall);
+
+            save_tick_state(tick_acc, &tick)?;
+
+            // Transfer tokens from vaults to provider
+            let authority_key = pool.authority;
+            let pool_bump = pool.bump;
+            let pool_seeds: &[&[u8]] = &[b"pool", authority_key.as_ref(), &[pool_bump]];
+
+            for i in 0..n {
+                if return_amounts_u64[i] == 0 {
+                    continue;
+                }
+                let vault_info = &remaining[i];
+                let ata_info = &remaining[ata_offset + i];
+
+                token::transfer(
+                    CpiContext::new_with_signer(
+                        ctx.accounts.token_program.to_account_info(),
+                        token::Transfer {
+                            from: vault_info.clone(),
+                            to: ata_info.clone(),
+                            authority: pool.to_account_info(),
+                        },
+                        &[pool_seeds],
+                    ),
+                    return_amounts_u64[i],
+                )?;
+            }
+
+            // Update position
+            let pool_key = pool.key();
+            let provider_key = ctx.accounts.provider.key();
+            let position_key = ctx.accounts.position.key();
+            let n_assets = pool.n_assets;
+
+            let position = &mut ctx.accounts.position;
+            position.liquidity = position.liquidity.checked_sub(remove_amount)?;
+            let clock = Clock::get()?;
+            position.updated_at = clock.unix_timestamp;
+
+            emit!(LiquidityRemoved {
+                pool: pool_key,
+                provider: provider_key,
+                position: position_key,
+                amounts: return_amounts_u64,
+                liquidity_removed: remove_amount.raw,
+                remaining_liquidity: position.liquidity.raw,
+                new_radius: pool.sphere.radius.raw,
+                n_assets,
+                timestamp: clock.unix_timestamp,
+            });
+
+            msg!(
+                "Boundary liquidity removed: {}, remaining: {}",
+                remove_amount,
+                position.liquidity
+            );
+            return Ok(());
+        }
+
+        // Interior tick: use standard pool-level withdrawal, then adjust tick reserves
+        let result = remove_liquidity_from_pool(pool, remove_amount)?;
 
         // Subtract proportional share from tick reserves.
         // Per-tick reserves may be stale (interior swaps don't update them),
@@ -124,7 +228,6 @@ pub fn handler<'info>(
             };
             tick.reserves[i] = tick.reserves[i].checked_sub(sub)?;
         }
-        // Similarly, cap liquidity subtraction to prevent underflow
         let liq_sub = if remove_amount.raw > tick.liquidity.raw {
             tick.liquidity
         } else {
@@ -132,9 +235,66 @@ pub fn handler<'info>(
         };
         tick.liquidity = tick.liquidity.checked_sub(liq_sub)?;
 
-        // Serialize tick back to account
         save_tick_state(tick_acc, &tick)?;
+
+        // Continue to standard transfer path below with `result`
+        let authority_key = pool.authority;
+        let pool_bump = pool.bump;
+        let pool_seeds: &[&[u8]] = &[b"pool", authority_key.as_ref(), &[pool_bump]];
+
+        for i in 0..n {
+            if result.return_amounts_u64[i] == 0 {
+                continue;
+            }
+            let vault_info = &remaining[i];
+            let ata_info = &remaining[ata_offset + i];
+
+            token::transfer(
+                CpiContext::new_with_signer(
+                    ctx.accounts.token_program.to_account_info(),
+                    token::Transfer {
+                        from: vault_info.clone(),
+                        to: ata_info.clone(),
+                        authority: pool.to_account_info(),
+                    },
+                    &[pool_seeds],
+                ),
+                result.return_amounts_u64[i],
+            )?;
+        }
+
+        let pool_key = pool.key();
+        let provider_key = ctx.accounts.provider.key();
+        let position_key = ctx.accounts.position.key();
+        let n_assets = pool.n_assets;
+
+        let position = &mut ctx.accounts.position;
+        position.liquidity = position.liquidity.checked_sub(remove_amount)?;
+        let clock = Clock::get()?;
+        position.updated_at = clock.unix_timestamp;
+
+        emit!(LiquidityRemoved {
+            pool: pool_key,
+            provider: provider_key,
+            position: position_key,
+            amounts: result.return_amounts_u64,
+            liquidity_removed: remove_amount.raw,
+            remaining_liquidity: position.liquidity.raw,
+            new_radius: result.new_radius.raw,
+            n_assets,
+            timestamp: clock.unix_timestamp,
+        });
+
+        msg!(
+            "Liquidity removed: {}, remaining: {}",
+            remove_amount,
+            position.liquidity
+        );
+        return Ok(());
     }
+
+    // ── Full-range (no tick): standard pool-level withdrawal ──
+    let result = remove_liquidity_from_pool(pool, remove_amount)?;
 
     // ── SPL token transfers: pool vaults → provider ATAs ──
     let authority_key = pool.authority;
@@ -197,9 +357,13 @@ pub fn handler<'info>(
 // ── Tick account helpers ──
 
 fn load_tick_state(acc: &AccountInfo) -> Result<TickState> {
+    // Validate account is owned by this program (prevents forged tick accounts)
+    require!(acc.owner == &crate::ID, OrbitalError::InvalidTickAccount);
+
     let data = acc.try_borrow_data()?;
-    let mut slice = &data[8..];
-    TickState::deserialize(&mut slice).map_err(|_| OrbitalError::InvalidVaultAddress.into())
+    let mut slice: &[u8] = &data;
+    TickState::try_deserialize(&mut slice)
+        .map_err(|_| OrbitalError::InvalidTickAccount.into())
 }
 
 fn save_tick_state(acc: &AccountInfo, tick: &TickState) -> Result<()> {

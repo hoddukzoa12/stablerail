@@ -188,11 +188,15 @@ pub fn handler<'info>(
 
 // ── Tick account helpers ──
 
-/// Deserialize TickState from AccountInfo (skipping 8-byte discriminator).
+/// Deserialize TickState from AccountInfo with owner + discriminator validation.
 fn load_tick_state_mut(acc: &AccountInfo) -> Result<TickState> {
+    // Validate account is owned by this program (prevents forged tick accounts)
+    require!(acc.owner == &crate::ID, OrbitalError::InvalidTickAccount);
+
     let data = acc.try_borrow_data()?;
-    let mut slice = &data[8..];
-    TickState::deserialize(&mut slice).map_err(|_| OrbitalError::InvalidVaultAddress.into())
+    let mut slice: &[u8] = &data;
+    TickState::try_deserialize(&mut slice)
+        .map_err(|_| OrbitalError::InvalidTickAccount.into())
 }
 
 /// Serialize TickState back into AccountInfo (preserving 8-byte discriminator).

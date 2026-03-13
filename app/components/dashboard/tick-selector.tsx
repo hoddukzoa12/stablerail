@@ -77,8 +77,6 @@ export function TickSelector({
     return raw;
   }
 
-  const kRawFromInput = useMemo(() => computeKRaw(kInput), [kInput]);
-
   const interiorTicks = ticks.filter((t) => t.status === "Interior");
 
   return (

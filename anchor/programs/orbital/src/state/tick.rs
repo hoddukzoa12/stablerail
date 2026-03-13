@@ -23,8 +23,15 @@ pub struct TickState {
     pub created_at: i64,
     /// Per-tick reserves: tracks each asset's share of liquidity within this tick.
     /// Only first `pool.n_assets` entries are used (rest are zero).
-    /// When status == Interior, these reserves contribute to pool.reserves.
-    /// On Interior→Boundary crossing, subtracted from pool; on Boundary→Interior, added back.
+    ///
+    /// When status == Interior, these reserves are *included* in pool.reserves
+    /// but may become stale as interior swaps update pool.reserves without
+    /// updating per-tick reserves. Withdrawal uses min(return, tick_reserve)
+    /// to handle staleness safely.
+    ///
+    /// When status == Boundary, these reserves are *excluded* from pool.reserves
+    /// (subtracted at crossing time) and represent the tick's frozen snapshot.
+    /// Boundary withdrawal computes returns from tick.reserves directly.
     pub reserves: [FixedPoint; MAX_ASSETS],
     pub _reserved: [u8; 32],
 }
