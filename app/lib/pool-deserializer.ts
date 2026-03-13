@@ -33,22 +33,13 @@
 
 import { Q6464 } from "./stablerail-math";
 import type { PoolState } from "./stablerail-math";
+import { readI128LE } from "./format-utils";
 
 /** Anchor discriminator for PoolState: sha256("account:PoolState")[..8] */
 const POOL_DISCRIMINATOR = new Uint8Array([247, 237, 227, 245, 215, 195, 222, 70]);
 
 /** Minimum account data size for a valid PoolState */
 const MIN_POOL_SIZE = 936;
-
-/**
- * Read a little-endian i128 from a DataView as a BigInt.
- * i128 = two u64 limbs: low 8 bytes + high 8 bytes (signed).
- */
-function readI128LE(view: DataView, offset: number): bigint {
-  const lo = view.getBigUint64(offset, true);
-  const hi = view.getBigInt64(offset + 8, true); // signed for high limb
-  return (hi << 64n) | lo;
-}
 
 /**
  * Deserialize raw account bytes into a PoolState for the swap calculator.

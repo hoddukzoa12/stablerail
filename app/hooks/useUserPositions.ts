@@ -29,7 +29,7 @@ import { useWalletConnection } from "@solana/react-hooks";
 import { createSolanaRpc, type Address, getAddressEncoder } from "@solana/kit";
 import type { Base64EncodedBytes } from "@solana/rpc-types";
 import { PROGRAM_ID } from "../lib/devnet-config";
-import { q6464ToNumber } from "../lib/format-utils";
+import { q6464ToNumber, readI128LE } from "../lib/format-utils";
 
 /** PositionState account discriminator: sha256("account:PositionState")[..8] */
 const POSITION_DISCRIMINATOR = new Uint8Array([154, 47, 151, 70, 8, 128, 206, 231]);
@@ -48,15 +48,6 @@ export interface UserPosition {
   feesEarnedRaw: bigint;
   /** Creation timestamp (unix seconds) */
   createdAt: number;
-}
-
-/**
- * Read a little-endian i128 from a DataView as a BigInt.
- */
-function readI128LE(view: DataView, offset: number): bigint {
-  const lo = view.getBigUint64(offset, true);
-  const hi = view.getBigInt64(offset + 8, true);
-  return (hi << 64n) | lo;
 }
 
 function parsePositionAccount(address: string, data: Uint8Array): UserPosition {

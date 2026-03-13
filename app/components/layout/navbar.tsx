@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 import { useWalletConnection } from "@solana/react-hooks";
 import { Menu, X, ChevronDown, LogOut, ExternalLink } from "lucide-react";
 import { Button } from "../ui/button";
+import { FaucetButton } from "../faucet/faucet-button";
 
 function PhantomIcon({ className }: { className?: string }) {
   return (
@@ -124,6 +125,9 @@ export function Navbar() {
 
         {/* Right: Wallet + Mobile menu */}
         <div className="flex items-center gap-3">
+          {/* Faucet (devnet only, shown when wallet connected) */}
+          <FaucetButton />
+
           {/* Wallet Section */}
           {isConnected ? (
             <div className="relative" ref={walletMenuRef}>

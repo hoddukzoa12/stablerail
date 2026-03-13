@@ -20,6 +20,10 @@ export const TOKEN_PROGRAM_ID =
 export const ATA_PROGRAM_ID =
   "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL" as Address;
 
+/** System Program ID */
+export const SYSTEM_PROGRAM_ID =
+  "11111111111111111111111111111111" as Address;
+
 /**
  * Derive the Associated Token Account address for a given owner and mint.
  *

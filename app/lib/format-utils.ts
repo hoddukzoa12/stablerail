@@ -5,6 +5,43 @@
  * address truncation, and Solana Explorer URL generation.
  */
 
+// ── Binary Helpers ──
+
+/** Concatenate multiple Uint8Arrays into a single buffer. */
+export function concatBytes(...parts: Uint8Array[]): Uint8Array {
+  const totalLen = parts.reduce((s, p) => s + p.length, 0);
+  const result = new Uint8Array(totalLen);
+  let offset = 0;
+  for (const part of parts) {
+    result.set(part, offset);
+    offset += part.length;
+  }
+  return result;
+}
+
+/** Read a little-endian i128 from a DataView as a BigInt. */
+export function readI128LE(view: DataView, offset: number): bigint {
+  const lo = view.getBigUint64(offset, true);
+  const hi = view.getBigInt64(offset + 8, true);
+  return (hi << 64n) | lo;
+}
+
+/** Decode RPC account data (base64 tuple or raw Uint8Array) to bytes. */
+export function decodeAccountData(rawData: unknown): Uint8Array {
+  if (rawData instanceof Uint8Array) return rawData;
+
+  if (Array.isArray(rawData) && typeof rawData[0] === "string") {
+    const decoded = atob(rawData[0] as string);
+    const bytes = new Uint8Array(decoded.length);
+    for (let i = 0; i < decoded.length; i++) {
+      bytes[i] = decoded.charCodeAt(i);
+    }
+    return bytes;
+  }
+
+  throw new Error("Unexpected account data format");
+}
+
 // ── Q64.64 Conversion ──
 
 const Q64 = 1n << 64n;
@@ -107,4 +144,14 @@ export function computePartialLiquidity(
 /** Clamp a percent input string to 1-100 range. */
 export function clampPercent(value: string): number {
   return Math.max(1, Math.min(100, Number(value) || 1));
+}
+
+// ── Number Formatting ──
+
+/** Format a number with 2 decimal places and locale-aware grouping. */
+export function formatAmount(value: number): string {
+  return value.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 }
