@@ -31,7 +31,7 @@ Benefits: Maximum trust — code cannot change. Risk: Cannot patch bugs.
 
 ## Key Security Properties
 
-1. **No admin drain**: Pool authority cannot withdraw vault tokens directly
-2. **Non-custodial**: Funds move only through swap/liquidity CPI paths
+1. **No admin drain while LPs exist**: `close_pool` requires `total_interior_liquidity == 0` before draining vaults
+2. **Non-custodial during operation**: Funds move through swap/liquidity CPI paths; `close_pool` only available after all LPs withdraw
 3. **Fee model**: Fees accrue as LP liquidity (Curve-style), no separate extraction
 4. **Settlement guardrails**: Allowlist + trade limits + daily volume caps + audit trail

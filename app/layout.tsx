@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
-import { Geist_Mono, Inter } from "next/font/google";
+import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./components/providers";
+import { Navbar } from "./components/layout/navbar";
+import { AmbientBg } from "./components/ambient-viz/ambient-bg";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -9,18 +11,19 @@ const inter = Inter({
   display: "swap",
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const jetbrainsMono = JetBrains_Mono({
+  variable: "--font-jetbrains-mono",
   subsets: ["latin"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
-  title: "Solana dApp Starter",
-  description: "A minimal Next.js starter powered by @solana/react-hooks",
+  title: "StableRail",
+  description: "Multi-asset stablecoin AMM on Solana",
   icons: {
-    icon: "/icon.svg",
-    shortcut: "/icon.svg",
-    apple: "/icon.svg",
+    icon: "/favicon-32x32.png",
+    shortcut: "/favicon-16x16.png",
+    apple: "/apple-touch-icon.png",
   },
 };
 
@@ -30,12 +33,16 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" className="dark">
       <body
         suppressHydrationWarning
-        className={`${inter.variable} ${geistMono.variable} antialiased`}
+        className={`${inter.variable} ${jetbrainsMono.variable} bg-surface-base text-text-primary antialiased`}
       >
-        <Providers>{children}</Providers>
+        <Providers>
+          <AmbientBg />
+          <Navbar />
+          <main className="relative z-10 pt-16">{children}</main>
+        </Providers>
       </body>
     </html>
   );

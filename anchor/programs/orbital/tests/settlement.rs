@@ -130,7 +130,7 @@ fn setup_settlement_env(deposit: u64, max_trade: u64, max_daily: u64) -> Settlem
         token_mints_arr[i] = mint_kp.pubkey();
     }
 
-    let data = build_init_pool_data(n_assets, 30, deposit, token_mints_arr);
+    let data = build_init_pool_data(n_assets, 1, deposit, token_mints_arr);
 
     let mut accounts = vec![
         AccountMeta::new(authority.pubkey(), true),
@@ -385,7 +385,7 @@ fn test_settlement_executes_swap() {
 
     let amount: u64 = 10_000;
     let expected_out = compute_valid_expected_out(
-        env.n_assets, env.deposit, 30, 0, 1, amount, 6,
+        env.n_assets, env.deposit, 1, 0, 1, amount, 6,
     );
     assert!(expected_out > 0, "expected_out must be positive");
 

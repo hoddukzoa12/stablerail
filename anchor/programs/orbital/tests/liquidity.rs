@@ -126,7 +126,7 @@ fn setup_pool(deposit: u64) -> TestPool {
         token_mints_arr[i] = mint_kp.pubkey();
     }
 
-    let data = build_init_pool_data(n_assets, 30, deposit, token_mints_arr);
+    let data = build_init_pool_data(n_assets, 1, deposit, token_mints_arr);
 
     let mut accounts = vec![
         AccountMeta::new(authority.pubkey(), true),

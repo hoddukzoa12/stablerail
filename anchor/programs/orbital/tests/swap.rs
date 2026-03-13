@@ -66,7 +66,7 @@ fn compute_expected_out_with_reserves(
     let expected_out_fp =
         compute_amount_out_analytical(&sphere, &reserves, token_in, token_out, net_in).unwrap();
 
-    expected_out_fp.to_token_amount(decimals).unwrap()
+    expected_out_fp.to_token_amount_floor(decimals).unwrap()
 }
 
 // ── Instruction Builders ──
@@ -103,7 +103,7 @@ struct TestPool {
     deposit: u64,
 }
 
-/// Initialize a 3-asset pool with the given deposit per asset and fee_rate_bps = 30.
+/// Initialize a 3-asset pool with the given deposit per asset and fee_rate_bps = 1.
 fn setup_pool(deposit: u64) -> TestPool {
     let so_path = program_so_path();
     if !so_path.exists() {
@@ -151,7 +151,7 @@ fn setup_pool(deposit: u64) -> TestPool {
         token_mints_arr[i] = mint_kp.pubkey();
     }
 
-    let data = build_init_pool_data(n_assets, 30, deposit, token_mints_arr);
+    let data = build_init_pool_data(n_assets, 1, deposit, token_mints_arr);
 
     let mut accounts = vec![
         AccountMeta::new(authority.pubkey(), true),
@@ -293,7 +293,7 @@ fn test_swap_transfers_tokens() {
     // Compute exact expected_amount_out using Q64.64 math
     let amount_in: u64 = 10_000;
     let expected_out = compute_valid_expected_out(
-        tp.n_assets, tp.deposit, 30, 0, 1, amount_in, 6,
+        tp.n_assets, tp.deposit, 1, 0, 1, amount_in, 6,
     );
     assert!(expected_out > 0, "expected_out must be positive");
 
@@ -383,7 +383,7 @@ fn test_swap_rejects_slippage_exceeded() {
     // Compute the real expected output for reference
     let amount_in: u64 = 10_000;
     let expected_out = compute_valid_expected_out(
-        tp.n_assets, tp.deposit, 30, 0, 1, amount_in, 6,
+        tp.n_assets, tp.deposit, 1, 0, 1, amount_in, 6,
     );
 
     // Set min_amount_out higher than actual → slippage exceeded
@@ -419,7 +419,7 @@ fn test_swap_roundtrip() {
     // ── First swap: 0 → 1 ──
     let amount_in_1: u64 = 10_000;
     let expected_out_1 = compute_valid_expected_out(
-        tp.n_assets, tp.deposit, 30, 0, 1, amount_in_1, 6,
+        tp.n_assets, tp.deposit, 1, 0, 1, amount_in_1, 6,
     );
 
     send_swap(
@@ -438,7 +438,7 @@ fn test_swap_roundtrip() {
     // Swap back the received amount
     let amount_in_2 = expected_out_1;
     let expected_out_2 = compute_expected_out_with_reserves(
-        tp.n_assets, tp.deposit, 30,
+        tp.n_assets, tp.deposit, 1,
         &[reserve_0, reserve_1, reserve_2],
         1, 0,
         amount_in_2, 6,
