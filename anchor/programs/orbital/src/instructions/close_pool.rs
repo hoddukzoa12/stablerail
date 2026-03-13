@@ -47,6 +47,7 @@ pub fn handler<'info>(
         OrbitalError::PoolNotEmpty
     );
 
+
     let remaining = &ctx.remaining_accounts;
     require!(
         remaining.len() == 2 * n,
@@ -80,6 +81,7 @@ pub fn handler<'info>(
                 OrbitalError::Unauthorized
             );
         }
+
 
         // Step 1: Transfer all tokens from vault to authority ATA
         let vault_data = vault_info.try_borrow_data()?;
