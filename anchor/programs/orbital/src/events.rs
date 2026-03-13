@@ -49,6 +49,27 @@ pub struct SwapExecuted {
     pub timestamp: i64,
 }
 
+/// Emitted when a new tick is created via `create_tick`.
+#[event]
+pub struct TickCreated {
+    /// Pool account pubkey
+    pub pool: Pubkey,
+    /// Tick account pubkey
+    pub tick: Pubkey,
+    /// Plane constant k (Q64.64 raw)
+    pub k: i128,
+    /// Minimum single-asset reserve within this tick (Q64.64 raw)
+    pub x_min: i128,
+    /// Maximum single-asset reserve within this tick (Q64.64 raw)
+    pub x_max: i128,
+    /// Depeg price at maximum imbalance (Q64.64 raw)
+    pub depeg_price: i128,
+    /// Capital efficiency: x_base / (x_base - x_min) (Q64.64 raw)
+    pub capital_efficiency: i128,
+    /// Unix timestamp
+    pub timestamp: i64,
+}
+
 /// Emitted when a tick crosses between Interior and Boundary status
 /// during a swap.
 #[event]

@@ -1,11 +1,19 @@
 "use client";
 
 import { useState, useCallback, useMemo } from "react";
+import { type Address, getProgramDerivedAddress, getAddressEncoder } from "@solana/kit";
 import { Button } from "../ui/button";
 import { TxNotification } from "../ui/tx-notification";
 import { TOKENS } from "../../lib/tokens";
+import { PROGRAM_ID, POOL_PDA } from "../../lib/devnet-config";
 import { q6464ToNumber, formatBalance } from "../../lib/format-utils";
 import { useAddLiquidity } from "../../hooks/useAddLiquidity";
+import { useCreateTick } from "../../hooks/useCreateTick";
+import { usePoolTicks } from "../../hooks/usePoolTicks";
+import {
+  TickSelector,
+  type TickSelection,
+} from "./tick-selector";
 import type { PoolState } from "../../lib/stablerail-math";
 
 interface AddLiquidityFormProps {
@@ -29,11 +37,16 @@ function getSubmitLabel(
   hasAnyInput: boolean,
   allPositive: boolean,
   exceedsBalance: boolean,
+  needsTickCreation: boolean,
 ): string {
-  if (isSending) return "Adding Liquidity...";
+  if (isSending)
+    return needsTickCreation
+      ? "Creating Tick & Adding Liquidity..."
+      : "Adding Liquidity...";
   if (!hasAnyInput) return "Enter amounts";
   if (!allPositive) return "All tokens required";
   if (exceedsBalance) return "Insufficient balance";
+  if (needsTickCreation) return "Create Tick & Add Liquidity";
   return "Add Liquidity";
 }
 
@@ -45,7 +58,20 @@ export function AddLiquidityForm({
   const tokens = TOKENS.slice(0, pool.nAssets);
   const [amounts, setAmounts] = useState<string[]>(tokens.map(() => ""));
   const [txResult, setTxResult] = useState<string | null>(null);
+  const [tickSelection, setTickSelection] = useState<TickSelection>({
+    mode: "full-range",
+  });
   const { execute, isSending, error } = useAddLiquidity();
+  const {
+    execute: createTick,
+    isSending: isCreatingTick,
+    error: tickError,
+  } = useCreateTick();
+  const {
+    ticks,
+    isLoading: ticksLoading,
+    refresh: refreshTicks,
+  } = usePoolTicks(pool.nAssets);
 
   const reserves = useMemo(
     () => pool.reserves.map((r) => q6464ToNumber(r.raw)),
@@ -82,15 +108,27 @@ export function AddLiquidityForm({
     );
 
     const balanceRatios = proportional.map((p, i) => {
-      const bal = balanceToNumber(balances, tokens[i].symbol, tokens[i].decimals);
+      const bal = balanceToNumber(
+        balances,
+        tokens[i].symbol,
+        tokens[i].decimals,
+      );
       return p > 0 ? bal / p : Infinity;
     });
     const scale = Math.min(1, Math.min(...balanceRatios));
 
     setAmounts(
-      proportional.map((p) => (Math.floor(p * scale * 100) / 100).toFixed(2)),
+      proportional.map((p) =>
+        (Math.floor(p * scale * 100) / 100).toFixed(2),
+      ),
     );
   };
+
+  // Whether we need to create a new tick first
+  const needsTickCreation =
+    tickSelection.mode === "concentrated" &&
+    !tickSelection.tickAddress &&
+    tickSelection.kRaw !== undefined;
 
   const handleSubmit = useCallback(async () => {
     setTxResult(null);
@@ -103,14 +141,61 @@ export function AddLiquidityForm({
     if (baseAmounts.some((a) => a === 0n)) return;
 
     try {
-      const sig = await execute({ amounts: baseAmounts }, pool);
+      let tickAddr: string | undefined = tickSelection.tickAddress;
+
+      // If concentrated mode with new tick, create it first
+      if (needsTickCreation && tickSelection.kRaw !== undefined) {
+        const tickSig = await createTick(
+          { kRaw: tickSelection.kRaw },
+          pool.tickCount,
+        );
+        if (!tickSig) throw new Error("Tick creation failed");
+
+        // Wait for confirmation
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        await refreshTicks();
+
+        // Derive the new tick PDA
+        const encoder = getAddressEncoder();
+        const tickCountBytes = new Uint8Array(2);
+        new DataView(tickCountBytes.buffer).setUint16(
+          0,
+          pool.tickCount,
+          true,
+        );
+        const [tickPda] = await getProgramDerivedAddress({
+          programAddress: PROGRAM_ID as Address,
+          seeds: [
+            new TextEncoder().encode("tick"),
+            encoder.encode(POOL_PDA as Address),
+            tickCountBytes,
+          ],
+        });
+        tickAddr = tickPda;
+      }
+
+      const sig = await execute(
+        { amounts: baseAmounts, tickAddress: tickAddr },
+        pool,
+      );
       setTxResult(sig);
       setAmounts(tokens.map(() => ""));
+      setTickSelection({ mode: "full-range" });
       onSuccess();
     } catch {
-      // error is tracked in the hook
+      // error is tracked in the hooks
     }
-  }, [amounts, tokens, pool, execute, onSuccess]);
+  }, [
+    amounts,
+    tokens,
+    pool,
+    execute,
+    createTick,
+    onSuccess,
+    tickSelection,
+    needsTickCreation,
+    refreshTicks,
+  ]);
 
   // Validation
   const parsedAmounts = amounts.map((a) => parseFloat(a || "0"));
@@ -119,11 +204,33 @@ export function AddLiquidityForm({
   const hasZero = hasAnyInput && !allPositive;
 
   const exceedsBalance = tokens.some((token, i) => {
-    return parsedAmounts[i] > balanceToNumber(balances, token.symbol, token.decimals);
+    return (
+      parsedAmounts[i] >
+      balanceToNumber(balances, token.symbol, token.decimals)
+    );
   });
+
+  const isSubmitting = isSending || isCreatingTick;
+
+  // Validate concentrated mode has a valid selection
+  const concentratedValid =
+    tickSelection.mode === "full-range" ||
+    tickSelection.tickAddress !== undefined ||
+    tickSelection.kRaw !== undefined;
 
   return (
     <div>
+      {/* Tick Selector */}
+      <div className="mb-4">
+        <TickSelector
+          pool={pool}
+          ticks={ticks}
+          ticksLoading={ticksLoading}
+          selection={tickSelection}
+          onChange={setTickSelection}
+        />
+      </div>
+
       {/* Info banner */}
       <div className="mb-3 rounded-lg bg-accent-blue/10 px-3 py-2 text-[11px] text-accent-blue">
         Asymmetric deposits OK — all tokens need at least a minimal amount.
@@ -132,7 +239,11 @@ export function AddLiquidityForm({
 
       <div className="space-y-3">
         {tokens.map((token, i) => {
-          const bal = balanceToNumber(balances, token.symbol, token.decimals);
+          const bal = balanceToNumber(
+            balances,
+            token.symbol,
+            token.decimals,
+          );
           const isOver = parsedAmounts[i] > bal;
           const isEmpty = hasAnyInput && parsedAmounts[i] === 0;
 
@@ -188,7 +299,9 @@ export function AddLiquidityForm({
               </div>
 
               {isOver && (
-                <p className="mt-1 text-[10px] text-error">Exceeds balance</p>
+                <p className="mt-1 text-[10px] text-error">
+                  Exceeds balance
+                </p>
               )}
               {isEmpty && (
                 <p className="mt-1 text-[10px] text-warning">
@@ -222,16 +335,31 @@ export function AddLiquidityForm({
         variant="gradient"
         size="lg"
         className="mt-4 w-full"
-        disabled={!allPositive || exceedsBalance || isSending}
+        disabled={
+          !allPositive ||
+          exceedsBalance ||
+          isSubmitting ||
+          !concentratedValid
+        }
         onClick={handleSubmit}
       >
-        {getSubmitLabel(isSending, hasAnyInput, allPositive, exceedsBalance)}
+        {getSubmitLabel(
+          isSubmitting,
+          hasAnyInput,
+          allPositive,
+          exceedsBalance,
+          needsTickCreation,
+        )}
       </Button>
 
       <TxNotification
-        error={error}
+        error={error || tickError}
         txSignature={txResult}
-        successLabel="Liquidity added!"
+        successLabel={
+          needsTickCreation
+            ? "Tick created & liquidity added!"
+            : "Liquidity added!"
+        }
       />
     </div>
   );

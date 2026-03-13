@@ -14,9 +14,10 @@
  *   [3] system_program — readonly (role 0)
  *   [4] token_program  — readonly (role 0)
  *
- * Remaining accounts (2 × n_assets):
+ * Remaining accounts (2 × n_assets + optional tick):
  *   [0..n)  = vault token accounts (writable)
  *   [n..2n) = provider ATAs (writable)
+ *   [2n]    = optional tick account (writable, for concentrated liquidity)
  */
 
 import { useState, useCallback } from "react";
@@ -33,6 +34,8 @@ const SYSTEM_PROGRAM_ID = "11111111111111111111111111111111" as Address;
 export interface AddLiquidityExecuteParams {
   /** Base-unit deposit amounts per token (3 entries for our pool) */
   amounts: bigint[];
+  /** Optional tick address for concentrated liquidity */
+  tickAddress?: string;
 }
 
 /**
@@ -95,9 +98,13 @@ export function useAddLiquidity() {
           { address: positionPda, role: 1 as const },
           { address: SYSTEM_PROGRAM_ID, role: 0 as const },
           { address: TOKEN_PROGRAM_ID, role: 0 as const },
-          // remaining_accounts: [vault0, vault1, vault2, ata0, ata1, ata2]
+          // remaining_accounts: [vault0..n, ata0..n, optional tick]
           ...TOKENS.map((t) => ({ address: t.vault as Address, role: 1 as const })),
           ...userAtas.map((ata) => ({ address: ata, role: 1 as const })),
+          // Append tick account if concentrated liquidity
+          ...(params.tickAddress
+            ? [{ address: params.tickAddress as Address, role: 1 as const }]
+            : []),
         ],
         data,
       };

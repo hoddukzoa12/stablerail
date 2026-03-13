@@ -46,6 +46,8 @@ export interface PoolState {
   isActive: boolean;
   /** Total interior liquidity (Q64.64) — denominator for proportional withdrawals */
   totalInteriorLiquidity: Q6464;
+  /** Number of ticks created for this pool */
+  tickCount: number;
 }
 
 /**

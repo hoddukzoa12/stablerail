@@ -5,7 +5,7 @@ use crate::domain::liquidity::remove_liquidity_from_pool;
 use crate::errors::OrbitalError;
 use crate::events::LiquidityRemoved;
 use crate::math::FixedPoint;
-use crate::state::{PoolState, PositionState};
+use crate::state::{PoolState, PositionState, TickState};
 
 #[derive(AnchorSerialize, AnchorDeserialize)]
 pub struct RemoveLiquidityParams {
@@ -17,9 +17,10 @@ pub struct RemoveLiquidityParams {
 
 /// Accounts for `remove_liquidity`.
 ///
-/// `remaining_accounts` layout (2 × n_assets):
+/// `remaining_accounts` layout:
 ///   [0..n)  = vault token accounts  (writable, send tokens from)
 ///   [n..2n) = provider ATAs         (writable, receive tokens)
+///   [2n]    = optional tick account (writable, required if position has tick)
 ///
 /// NOTE: No `pool.is_active` guard — LPs must always be able to withdraw
 /// (DeFi emergency exit pattern: Curve/Aave/Compound convention).
@@ -56,10 +57,21 @@ pub fn handler<'info>(
     // Emergency exit pattern — LPs must always be able to withdraw.
 
     let remaining = &ctx.remaining_accounts;
-    require!(
-        remaining.len() == 2 * n,
-        OrbitalError::InvalidRemainingAccounts
-    );
+    let position = &ctx.accounts.position;
+    let has_tick = position.tick != Pubkey::default();
+
+    // Validate remaining_accounts count: 2*n (full-range) or 2*n+1 (tick)
+    if has_tick {
+        require!(
+            remaining.len() == 2 * n + 1,
+            OrbitalError::InvalidRemainingAccounts
+        );
+    } else {
+        require!(
+            remaining.len() == 2 * n,
+            OrbitalError::InvalidRemainingAccounts
+        );
+    }
 
     // Validate removal amount against position balance
     let remove_amount = FixedPoint::from_raw(params.liquidity_raw);
@@ -67,13 +79,12 @@ pub fn handler<'info>(
         remove_amount.is_positive(),
         OrbitalError::InvalidLiquidityAmount
     );
-    let position = &ctx.accounts.position;
     require!(
         remove_amount.raw <= position.liquidity.raw,
         OrbitalError::InsufficientPositionBalance
     );
 
-    // remaining_accounts layout: [0..n) vaults, [n..2n) provider ATAs
+    // remaining_accounts layout: [0..n) vaults, [n..2n) provider ATAs, [2n]? tick
     let ata_offset = n;
 
     // Validate vault addresses match pool state
@@ -88,8 +99,29 @@ pub fn handler<'info>(
     let pool = &mut ctx.accounts.pool;
     let result = remove_liquidity_from_pool(pool, remove_amount)?;
 
+    // ── Tick-specific logic: subtract from per-tick reserves ──
+    if has_tick {
+        let tick_acc = &remaining[2 * n];
+        let mut tick = load_tick_state(tick_acc)?;
+
+        // Validate tick matches position and pool
+        require!(
+            *tick_acc.key == ctx.accounts.position.tick,
+            OrbitalError::InvalidVaultAddress
+        );
+        require!(tick.pool == pool.key(), OrbitalError::InvalidVaultAddress);
+
+        // Subtract proportional returns from tick reserves
+        for i in 0..n {
+            tick.reserves[i] = tick.reserves[i].checked_sub(result.return_amounts[i])?;
+        }
+        tick.liquidity = tick.liquidity.checked_sub(remove_amount)?;
+
+        // Serialize tick back to account
+        save_tick_state(tick_acc, &tick)?;
+    }
+
     // ── SPL token transfers: pool vaults → provider ATAs ──
-    // Pool PDA signs as vault authority
     let authority_key = pool.authority;
     let pool_bump = pool.bump;
     let pool_seeds: &[&[u8]] = &[b"pool", authority_key.as_ref(), &[pool_bump]];
@@ -116,7 +148,6 @@ pub fn handler<'info>(
     }
 
     // ── Update position ──
-    // Capture keys before mutable borrow
     let pool_key = pool.key();
     let provider_key = ctx.accounts.provider.key();
     let position_key = ctx.accounts.position.key();
@@ -145,5 +176,21 @@ pub fn handler<'info>(
         remove_amount,
         position.liquidity
     );
+    Ok(())
+}
+
+// ── Tick account helpers ──
+
+fn load_tick_state(acc: &AccountInfo) -> Result<TickState> {
+    let data = acc.try_borrow_data()?;
+    let mut slice = &data[8..];
+    TickState::deserialize(&mut slice).map_err(|_| OrbitalError::InvalidVaultAddress.into())
+}
+
+fn save_tick_state(acc: &AccountInfo, tick: &TickState) -> Result<()> {
+    let mut data = acc.try_borrow_mut_data()?;
+    let mut writer = &mut data[8..];
+    tick.serialize(&mut writer)
+        .map_err(|_| OrbitalError::MathOverflow)?;
     Ok(())
 }

@@ -90,6 +90,9 @@ export function deserializePoolState(data: Uint8Array): PoolState {
   // total_interior_liquidity at offset 709 (i128 LE)
   const totalInteriorLiquidity = new Q6464(readI128LE(view, 709));
 
+  // tick_count at offset 773 (u16 LE)
+  const tickCount = view.getUint16(773, true);
+
   // is_active at offset 775 (bool)
   const isActive = data[775] !== 0;
 
@@ -113,5 +116,6 @@ export function deserializePoolState(data: Uint8Array): PoolState {
     positionCount,
     isActive,
     totalInteriorLiquidity,
+    tickCount,
   };
 }

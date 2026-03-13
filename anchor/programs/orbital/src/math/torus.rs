@@ -152,6 +152,166 @@ pub fn compute_new_alpha(
 }
 
 // ══════════════════════════════════════════════════════════════
+// Consolidated tick data for trade segmentation
+// ══════════════════════════════════════════════════════════════
+
+use crate::state::TickStatus;
+
+/// Consolidated view of active tick boundaries near the current alpha.
+///
+/// Used by the trade segmentation loop in `execute_swap` to determine
+/// if a swap will cross a tick boundary and which tick's k to target.
+#[derive(Clone, Copy, Debug)]
+pub struct ConsolidatedTickData {
+    /// Whether any boundary tick exists in the pool
+    pub has_boundary: bool,
+    /// Nearest Interior tick k below current alpha (alpha decreasing direction)
+    /// When alpha decreases past this k, that tick transitions Interior → Boundary
+    pub nearest_k_lower: Option<FixedPoint>,
+    /// Nearest Interior tick k above current alpha (alpha increasing direction)
+    /// When alpha increases past this k, the nearest Boundary tick transitions
+    /// Boundary → Interior
+    pub nearest_k_upper: Option<FixedPoint>,
+}
+
+/// Find the nearest tick boundaries relative to the current alpha.
+///
+/// Scans all ticks and finds:
+///   - nearest_k_lower: largest Interior tick k that is ≤ current alpha
+///   - nearest_k_upper: smallest Boundary tick k that is > current alpha
+///
+/// This maps to the reference implementation's `_getConsolidatedTickData()`.
+pub fn find_nearest_tick_boundaries(
+    ticks: &[(FixedPoint, TickStatus)],
+    current_alpha: FixedPoint,
+) -> ConsolidatedTickData {
+    let mut has_boundary = false;
+    let mut nearest_k_lower: Option<FixedPoint> = None;
+    let mut nearest_k_upper: Option<FixedPoint> = None;
+
+    for &(k, status) in ticks {
+        match status {
+            TickStatus::Interior => {
+                // Interior ticks below alpha: potential crossing on alpha decrease
+                if k.raw <= current_alpha.raw {
+                    match nearest_k_lower {
+                        None => nearest_k_lower = Some(k),
+                        Some(prev) if k.raw > prev.raw => nearest_k_lower = Some(k),
+                        _ => {}
+                    }
+                }
+            }
+            TickStatus::Boundary => {
+                has_boundary = true;
+                // Boundary ticks above alpha: potential crossing on alpha increase
+                if k.raw > current_alpha.raw {
+                    match nearest_k_upper {
+                        None => nearest_k_upper = Some(k),
+                        Some(prev) if k.raw < prev.raw => nearest_k_upper = Some(k),
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+
+    ConsolidatedTickData {
+        has_boundary,
+        nearest_k_lower,
+        nearest_k_upper,
+    }
+}
+
+// ══════════════════════════════════════════════════════════════
+// Delta-to-boundary solver (quadratic closed-form)
+// ══════════════════════════════════════════════════════════════
+
+/// Compute the amount of token_in needed to reach a tick boundary at k_cross.
+///
+/// Solves the quadratic equation arising from two constraints:
+///   1. Sphere invariant: Σ(r - xᵢ)² = r²
+///   2. Alpha target: new_alpha = (Σxᵢ + delta_in - delta_out) / √n = k_cross
+///
+/// Derivation:
+///   Let a = r - x_in, b = r - x_out, C = running_sum - k_cross·√n
+///   Then delta_out = delta_in + C  (from alpha constraint)
+///   Substituting into sphere invariant:
+///     (a - d)² + (b + d + C)² = a² + b²
+///   Expanding: 2d² + 2(b+C-a)d + (2bC + C²) = 0
+///
+/// Returns the positive root (delta_in to reach boundary).
+/// Returns zero if the boundary is already reached or unreachable.
+pub fn compute_delta_to_boundary(
+    sphere: &Sphere,
+    reserves: &[FixedPoint],
+    token_in: usize,
+    token_out: usize,
+    k_cross: FixedPoint,
+    n: u8,
+) -> Result<FixedPoint> {
+    let r = sphere.radius;
+    let n_fp = FixedPoint::from_int(n as i64);
+    let sqrt_n = n_fp.sqrt()?;
+
+    // a = r - x_in, b = r - x_out
+    let a = r.checked_sub(reserves[token_in])?;
+    let b = r.checked_sub(reserves[token_out])?;
+
+    // running_sum = Σ x_i
+    let mut running_sum = FixedPoint::zero();
+    for i in 0..n as usize {
+        running_sum = running_sum.checked_add(reserves[i])?;
+    }
+
+    // C = running_sum - k_cross · √n
+    let target_sum = k_cross.checked_mul(sqrt_n)?;
+    let c = running_sum.checked_sub(target_sum)?;
+
+    // Quadratic: 2d² + 2(b+C-a)d + (2bC + C²) = 0
+    // Coefficients (divided by 2):
+    //   A_coeff = 1  (after dividing by 2)
+    //   B_coeff = b + C - a
+    //   C_coeff = (2bC + C²) / 2 = C(2b + C) / 2
+    let b_coeff = b.checked_add(c)?.checked_sub(a)?;
+    let two = FixedPoint::from_int(2);
+    let c_coeff_numer = c.checked_mul(two.checked_mul(b)?.checked_add(c)?)?;
+    let c_coeff = c_coeff_numer.checked_div(two)?;
+
+    // Discriminant: B² - 4AC = b_coeff² - 4·1·c_coeff = b_coeff² - 4·c_coeff
+    let discriminant = b_coeff.squared()?.checked_sub(
+        FixedPoint::from_int(4).checked_mul(c_coeff)?,
+    )?;
+
+    // If discriminant < 0, boundary is unreachable (shouldn't happen with valid ticks)
+    if discriminant.raw < 0 {
+        return Ok(FixedPoint::zero());
+    }
+
+    let sqrt_disc = discriminant.sqrt()?;
+
+    // Two roots: d = (-b_coeff ± sqrt_disc) / 2
+    let neg_b = FixedPoint::zero().checked_sub(b_coeff)?;
+    let root1 = neg_b.checked_add(sqrt_disc)?.checked_div(two)?;
+    let root2 = neg_b.checked_sub(sqrt_disc)?.checked_div(two)?;
+
+    // Select the smallest positive root
+    let result = match (root1.raw > 0, root2.raw > 0) {
+        (true, true) => {
+            if root1.raw <= root2.raw {
+                root1
+            } else {
+                root2
+            }
+        }
+        (true, false) => root1,
+        (false, true) => root2,
+        (false, false) => FixedPoint::zero(), // No positive root — already past boundary
+    };
+
+    Ok(result)
+}
+
+// ══════════════════════════════════════════════════════════════
 // Tests
 // ══════════════════════════════════════════════════════════════
 
@@ -337,5 +497,93 @@ mod tests {
         )
         .unwrap();
         assert!(new_alpha.raw > old_alpha.raw);
+    }
+
+    // ── find_nearest_tick_boundaries ──
+
+    #[test]
+    fn test_find_nearest_empty_ticks() {
+        let data = find_nearest_tick_boundaries(&[], FixedPoint::from_int(100));
+        assert!(!data.has_boundary);
+        assert!(data.nearest_k_lower.is_none());
+        assert!(data.nearest_k_upper.is_none());
+    }
+
+    #[test]
+    fn test_find_nearest_interior_below() {
+        let ticks = vec![
+            (FixedPoint::from_int(90), TickStatus::Interior),
+            (FixedPoint::from_int(80), TickStatus::Interior),
+        ];
+        let data = find_nearest_tick_boundaries(&ticks, FixedPoint::from_int(100));
+        assert_eq!(data.nearest_k_lower.unwrap().raw, FixedPoint::from_int(90).raw);
+        assert!(data.nearest_k_upper.is_none());
+    }
+
+    #[test]
+    fn test_find_nearest_boundary_above() {
+        let ticks = vec![
+            (FixedPoint::from_int(110), TickStatus::Boundary),
+            (FixedPoint::from_int(120), TickStatus::Boundary),
+        ];
+        let data = find_nearest_tick_boundaries(&ticks, FixedPoint::from_int(100));
+        assert!(data.has_boundary);
+        assert!(data.nearest_k_lower.is_none());
+        assert_eq!(data.nearest_k_upper.unwrap().raw, FixedPoint::from_int(110).raw);
+    }
+
+    #[test]
+    fn test_find_nearest_mixed_ticks() {
+        let ticks = vec![
+            (FixedPoint::from_int(85), TickStatus::Interior),
+            (FixedPoint::from_int(95), TickStatus::Interior),
+            (FixedPoint::from_int(105), TickStatus::Boundary),
+            (FixedPoint::from_int(115), TickStatus::Boundary),
+        ];
+        let data = find_nearest_tick_boundaries(&ticks, FixedPoint::from_int(100));
+        assert!(data.has_boundary);
+        assert_eq!(data.nearest_k_lower.unwrap().raw, FixedPoint::from_int(95).raw);
+        assert_eq!(data.nearest_k_upper.unwrap().raw, FixedPoint::from_int(105).raw);
+    }
+
+    // ── compute_delta_to_boundary ──
+
+    #[test]
+    fn test_delta_to_boundary_returns_positive() {
+        // 3-asset pool at equilibrium: reserves = [100, 100, 100]
+        // r = 100, sum = 300, alpha = 300/√3 ≈ 173.2
+        // k_cross = 170 (below alpha → reachable by a trade that decreases alpha)
+        let sphere = make_sphere(100, 3);
+        let reserves = [
+            FixedPoint::from_int(100),
+            FixedPoint::from_int(100),
+            FixedPoint::from_int(100),
+        ];
+        let k_cross = FixedPoint::from_int(170);
+        let delta = compute_delta_to_boundary(&sphere, &reserves, 0, 1, k_cross, 3).unwrap();
+        // Should be positive (some amount needed to reach boundary)
+        assert!(delta.raw > 0, "delta should be positive, got {}", delta);
+    }
+
+    #[test]
+    fn test_delta_to_boundary_zero_when_at_boundary() {
+        // When current alpha is already at k_cross, delta should be ~0
+        let sphere = make_sphere(100, 3);
+        let reserves = [
+            FixedPoint::from_int(100),
+            FixedPoint::from_int(100),
+            FixedPoint::from_int(100),
+        ];
+        let n_fp = FixedPoint::from_int(3);
+        let sqrt_n = n_fp.sqrt().unwrap();
+        // current alpha = 300 / √3
+        let current_alpha = FixedPoint::from_int(300).checked_div(sqrt_n).unwrap();
+        let delta = compute_delta_to_boundary(&sphere, &reserves, 0, 1, current_alpha, 3).unwrap();
+        // Should be approximately zero
+        assert!(
+            delta.raw.abs() < FixedPoint::from_int(1).raw,
+            "delta should be ≈0 when at boundary, got {}",
+            delta
+        );
     }
 }

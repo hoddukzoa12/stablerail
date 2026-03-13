@@ -33,6 +33,10 @@ pub mod orbital {
         instructions::execute_swap::handler(ctx, params)
     }
 
+    pub fn create_tick(ctx: Context<CreateTick>, params: CreateTickParams) -> Result<()> {
+        instructions::create_tick::handler(ctx, params)
+    }
+
     // ═══════════════════════════════════════════
     //  Liquidity Context — LP Position Management
     // ═══════════════════════════════════════════
