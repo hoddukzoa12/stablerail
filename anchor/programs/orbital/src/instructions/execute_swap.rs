@@ -111,12 +111,12 @@ pub fn handler<'info>(
     let pool = &mut ctx.accounts.pool;
     let n = pool.n_assets;
 
-    // Guard: if pool has ticks, caller MUST provide tick accounts.
-    // Otherwise the swap bypasses crossing logic (flip_tick), letting trades
-    // execute without activating/deactivating boundary liquidity — changing
-    // pricing and LP exposure outside intended ranges.
+    // Guard: caller MUST provide ALL tick accounts for the pool.
+    // A partial set could omit the nearest boundary tick, letting the swap
+    // execute without the required flip_tick — leaving tick statuses and
+    // liquidity placement out of sync with the post-trade alpha.
     require!(
-        !tick_accounts.is_empty() || pool.tick_count == 0,
+        tick_accounts.len() as u16 == pool.tick_count,
         OrbitalError::InvalidRemainingAccounts
     );
 

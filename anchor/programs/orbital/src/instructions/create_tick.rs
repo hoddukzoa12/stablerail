@@ -17,7 +17,9 @@ pub struct CreateTickParams {
 /// Accounts for `create_tick`.
 ///
 /// Creates a new tick (spherical cap) for concentrated liquidity.
-/// The tick is derived from PDA: ["tick", pool, tick_count_le_bytes].
+/// The tick is derived from PDA: ["tick", pool, k_raw_le_bytes].
+/// Using k_raw in the seed enforces uniqueness — duplicate k values
+/// cause PDA collision and Anchor's `init` will fail.
 #[derive(Accounts)]
 #[instruction(params: CreateTickParams)]
 pub struct CreateTick<'info> {
@@ -38,7 +40,7 @@ pub struct CreateTick<'info> {
         seeds = [
             b"tick",
             pool.key().as_ref(),
-            &pool.tick_count.to_le_bytes(),
+            &params.k_raw.to_le_bytes(),
         ],
         bump,
     )]

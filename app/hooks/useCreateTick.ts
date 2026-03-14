@@ -13,7 +13,7 @@
  *   [2] tick          — writable (role 1) — init PDA
  *   [3] system_program — readonly (role 0)
  *
- * Tick PDA seeds: ["tick", pool_pubkey, tick_count_le_bytes]
+ * Tick PDA seeds: ["tick", pool_pubkey, k_raw_le_bytes]
  */
 
 import { useState, useCallback } from "react";
@@ -59,7 +59,7 @@ export function useCreateTick() {
   const [error, setError] = useState<Error | null>(null);
 
   const execute = useCallback(
-    async (params: CreateTickParams, tickCount: number): Promise<string> => {
+    async (params: CreateTickParams): Promise<string> => {
       const userAddress = wallet?.account.address;
       if (!userAddress) throw new Error("Wallet not connected");
 
@@ -67,16 +67,25 @@ export function useCreateTick() {
 
       const encoder = getAddressEncoder();
 
-      // Derive tick PDA: seeds = ["tick", pool_pubkey, tick_count_le_bytes]
-      const tickCountBytes = new Uint8Array(2);
-      new DataView(tickCountBytes.buffer).setUint16(0, tickCount, true);
+      // Derive tick PDA: seeds = ["tick", pool_pubkey, k_raw_le_bytes]
+      // k_raw is i128 LE (16 bytes) — matches on-chain PDA derivation
+      const kRawBytes = new Uint8Array(16);
+      const kView = new DataView(kRawBytes.buffer);
+      let value = params.kRaw;
+      if (value < 0n) {
+        value = (1n << 128n) + value; // two's complement
+      }
+      const lo = value & ((1n << 64n) - 1n);
+      const hi = (value >> 64n) & ((1n << 64n) - 1n);
+      kView.setBigUint64(0, lo, true);
+      kView.setBigUint64(8, hi, true);
 
       const [tickPda] = await getProgramDerivedAddress({
         programAddress: PROGRAM_ID as Address,
         seeds: [
           new TextEncoder().encode("tick"),
           encoder.encode(POOL_PDA as Address),
-          tickCountBytes,
+          kRawBytes,
         ],
       });
 

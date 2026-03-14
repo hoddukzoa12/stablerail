@@ -147,7 +147,6 @@ export function AddLiquidityForm({
       if (needsTickCreation && tickSelection.kRaw !== undefined) {
         const tickSig = await createTick(
           { kRaw: tickSelection.kRaw },
-          pool.tickCount,
         );
         if (!tickSig) throw new Error("Tick creation failed");
 
