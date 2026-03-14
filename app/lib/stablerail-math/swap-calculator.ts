@@ -137,8 +137,10 @@ export function computeSwapQuote(
   const amountOutU64 = amountOut.toTokenAmountFloor(outDecimals);
 
   // ── 6. Compute execution price and price impact ──
-  // execution_price = amount_in / amount_out (higher = worse for buyer)
-  const executionPrice = amountIn.div(amountOut);
+  // Use net input (post-fee) to isolate true market impact from the fee.
+  // Using gross input would conflate the LP fee with price impact,
+  // showing a minimum of ~fee_rate_bps regardless of trade size.
+  const executionPrice = netAmountIn.div(amountOut);
 
   let priceImpactBps = 0;
   if (midPrice !== null) {

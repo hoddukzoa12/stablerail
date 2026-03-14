@@ -19,7 +19,7 @@ function bpsToPercent(bps: number): string {
   const pct = bps / 100;
   if (pct === 0) return "0%";
   if (pct < 0.001) return "< 0.001%";
-  if (pct < 0.01) return `${pct.toFixed(3)}%`;
+  if (pct < 0.1) return `${pct.toFixed(3)}%`;
   return `${pct.toFixed(2)}%`;
 }
 
