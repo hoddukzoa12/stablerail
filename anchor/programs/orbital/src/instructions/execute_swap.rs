@@ -111,6 +111,15 @@ pub fn handler<'info>(
     let pool = &mut ctx.accounts.pool;
     let n = pool.n_assets;
 
+    // Guard: if pool has ticks, caller MUST provide tick accounts.
+    // Otherwise the swap bypasses crossing logic (flip_tick), letting trades
+    // execute without activating/deactivating boundary liquidity — changing
+    // pricing and LP exposure outside intended ranges.
+    require!(
+        !tick_accounts.is_empty() || pool.tick_count == 0,
+        OrbitalError::InvalidRemainingAccounts
+    );
+
     // ══════════════════════════════════════════════════════
     // Swap execution: single-segment or trade segmentation
     // ══════════════════════════════════════════════════════
@@ -218,14 +227,14 @@ pub fn handler<'info>(
                         total_out = total_out.checked_add(partial_out)?;
 
                         // Flip the crossed tick's status and redistribute reserves
-                        let from_status = flip_tick(tick_accounts, k_cross, pool)?;
+                        let (from_status, tick_key) = flip_tick(tick_accounts, k_cross, pool)?;
 
                         // Recompute sphere with updated reserves
                         recompute_sphere(pool)?;
                         update_caches(pool)?;
 
-                        // Emit TickCrossed event (uses pre-flip status to avoid ordering dependency)
-                        emit_tick_crossed_event(tick_accounts, k_cross, pool.key(), pool.alpha_cache, from_status)?;
+                        // Emit TickCrossed event (uses pre-flip status and pubkey from flip_tick)
+                        emit_tick_crossed_event(tick_key, pool.key(), pool.alpha_cache, from_status)?;
 
                         remaining_in = remaining_in.checked_sub(delta)?;
                     }
@@ -412,7 +421,7 @@ fn apply_partial_swap(
 }
 
 /// Flip a tick's status (Interior ↔ Boundary) and redistribute its reserves.
-/// Returns the pre-flip status for event emission.
+/// Returns the pre-flip status and tick pubkey for event emission.
 ///
 /// Interior → Boundary: subtract tick reserves from pool (tick is "deactivated")
 /// Boundary → Interior: add tick reserves back to pool (tick is "reactivated")
@@ -420,15 +429,15 @@ fn flip_tick(
     tick_accounts: &[AccountInfo],
     k_cross: FixedPoint,
     pool: &mut PoolState,
-) -> Result<TickStatus> {
+) -> Result<(TickStatus, Pubkey)> {
     let n = pool.n_assets as usize;
-    // Epsilon for k matching: 1.0 in Q64.64 integer units (generous for fixed-point)
-    let epsilon_raw = 1i128 << 60; // ≈ 0.0625 — tight enough for distinct ticks
 
     for acc in tick_accounts {
         let mut tick = load_tick_state(acc)?;
 
-        if (tick.k.raw - k_cross.raw).abs() < epsilon_raw {
+        // Exact equality: k_cross comes from find_nearest_tick_boundaries
+        // which reads tick.k directly — values are identical bytes.
+        if tick.k.raw == k_cross.raw {
             let from_status = tick.status;
 
             match tick.status {
@@ -475,9 +484,9 @@ fn flip_tick(
             let mut data = acc.try_borrow_mut_data()?;
             let mut writer = &mut data[8..]; // skip 8-byte discriminator
             tick.serialize(&mut writer)
-                .map_err(|_| OrbitalError::MathOverflow)?;
+                .map_err(|_| OrbitalError::TickSerializationFailed)?;
 
-            return Ok(from_status);
+            return Ok((from_status, *acc.key));
         }
     }
 
@@ -485,34 +494,26 @@ fn flip_tick(
     Err(OrbitalError::TickCrossingFailed.into())
 }
 
-/// Emit a TickCrossed event using the pre-flip status returned by flip_tick.
-/// This avoids re-reading the tick and eliminates ordering dependency.
+/// Emit a TickCrossed event using the pre-flip status and pubkey returned by flip_tick.
+/// No redundant account scan needed — flip_tick already identified the tick.
 fn emit_tick_crossed_event(
-    tick_accounts: &[AccountInfo],
-    k_cross: FixedPoint,
+    tick_key: Pubkey,
     pool_key: Pubkey,
     alpha_at_crossing: FixedPoint,
     from_status: TickStatus,
 ) -> Result<()> {
-    let epsilon_raw = 1i128 << 60;
     let to_status = match from_status {
         TickStatus::Interior => TickStatus::Boundary,
         TickStatus::Boundary => TickStatus::Interior,
     };
 
-    for acc in tick_accounts {
-        let tick = load_tick_state(acc)?;
-        if (tick.k.raw - k_cross.raw).abs() < epsilon_raw {
-            emit!(TickCrossed {
-                pool: pool_key,
-                tick: *acc.key,
-                from_status,
-                to_status,
-                alpha_at_crossing: alpha_at_crossing.raw,
-                timestamp: Clock::get()?.unix_timestamp,
-            });
-            break;
-        }
-    }
+    emit!(TickCrossed {
+        pool: pool_key,
+        tick: tick_key,
+        from_status,
+        to_status,
+        alpha_at_crossing: alpha_at_crossing.raw,
+        timestamp: Clock::get()?.unix_timestamp,
+    });
     Ok(())
 }

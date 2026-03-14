@@ -136,4 +136,7 @@ pub enum OrbitalError {
 
     #[msg("No tick matched the crossing k value")]
     TickCrossingFailed,
+
+    #[msg("Failed to serialize tick state back to account")]
+    TickSerializationFailed,
 }

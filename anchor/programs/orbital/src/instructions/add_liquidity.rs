@@ -209,6 +209,6 @@ fn save_tick_state(acc: &AccountInfo, tick: &TickState) -> Result<()> {
     let mut data = acc.try_borrow_mut_data()?;
     let mut writer = &mut data[8..];
     tick.serialize(&mut writer)
-        .map_err(|_| OrbitalError::MathOverflow)?;
+        .map_err(|_| OrbitalError::TickSerializationFailed)?;
     Ok(())
 }

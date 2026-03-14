@@ -550,16 +550,19 @@ mod tests {
 
     #[test]
     fn test_delta_to_boundary_returns_positive() {
-        // 3-asset pool at equilibrium: reserves = [100, 100, 100]
-        // r = 100, sum = 300, alpha = 300/√3 ≈ 173.2
-        // k_cross = 170 (below alpha → reachable by a trade that decreases alpha)
+        // 3-asset pool with asymmetric reserves: [10, 56, 42]
+        // r = 100, a = r-x_in = 90, b = r-x_out = 44 (asymmetric → positive discriminant)
+        // sum = 108, alpha = 108/√3 ≈ 62.35, k_cross = 60 (below alpha → reachable)
+        //
+        // Positive discriminant requires (a-b)² > C·(2(a+b) + C).
+        // With a=90, b=44: (a-b)²=2116 > C·(2·134 + C) ≈ 1093 ✓
         let sphere = make_sphere(100, 3);
         let reserves = [
-            FixedPoint::from_int(100),
-            FixedPoint::from_int(100),
-            FixedPoint::from_int(100),
+            FixedPoint::from_int(10),
+            FixedPoint::from_int(56),
+            FixedPoint::from_int(42),
         ];
-        let k_cross = FixedPoint::from_int(170);
+        let k_cross = FixedPoint::from_int(60);
         let delta = compute_delta_to_boundary(&sphere, &reserves, 0, 1, k_cross, 3).unwrap();
         // Should be positive (some amount needed to reach boundary)
         assert!(delta.raw > 0, "delta should be positive, got {}", delta);

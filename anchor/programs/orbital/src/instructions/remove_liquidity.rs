@@ -134,17 +134,23 @@ pub fn handler<'info>(
 
             tick.liquidity = tick.liquidity.checked_sub(liq_sub)?;
 
-            // Compute return amounts from tick reserves
-            let mut return_amounts = [FixedPoint::zero(); MAX_ASSETS];
+            // Compute return amounts from tick reserves.
+            // Reserve accounting uses the floor-rounded u64 amount (what actually
+            // leaves the vault), not the higher-precision Q64.64 value. This
+            // prevents dust accumulation where tick.reserves is decremented by
+            // more than the vault actually transferred.
             let mut return_amounts_u64 = [0u64; MAX_ASSETS];
             for i in 0..n {
-                return_amounts[i] = tick.reserves[i].checked_mul(tick_fraction)?;
-                return_amounts_u64[i] = return_amounts[i]
+                let return_fp = tick.reserves[i].checked_mul(tick_fraction)?;
+                return_amounts_u64[i] = return_fp
                     .to_token_amount_floor(pool.token_decimals[i])?;
-                let sub = if return_amounts[i].raw > tick.reserves[i].raw {
+                // Subtract the denormalized transferred amount from tick reserves
+                let transferred_fp =
+                    FixedPoint::from_token_amount(return_amounts_u64[i], pool.token_decimals[i])?;
+                let sub = if transferred_fp.raw > tick.reserves[i].raw {
                     tick.reserves[i]
                 } else {
-                    return_amounts[i]
+                    transferred_fp
                 };
                 tick.reserves[i] = tick.reserves[i].checked_sub(sub)?;
             }
@@ -370,6 +376,6 @@ fn save_tick_state(acc: &AccountInfo, tick: &TickState) -> Result<()> {
     let mut data = acc.try_borrow_mut_data()?;
     let mut writer = &mut data[8..];
     tick.serialize(&mut writer)
-        .map_err(|_| OrbitalError::MathOverflow)?;
+        .map_err(|_| OrbitalError::TickSerializationFailed)?;
     Ok(())
 }
