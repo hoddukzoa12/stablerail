@@ -3,18 +3,18 @@
   "rpcUrl": "https://api.devnet.solana.com",
   "programId": "BZDXfJTBpH9ZMo2dz57BFKGNw4FYFCDr1KaUUkFtfRVD",
   "deployer": "3JGigvUgkmoufhW4q35Co2HfpGqVgvQvPn68r1GzDGrs",
-  "pool": "BbKRmofnmQm5j9rq273PfFcvYj1XquDQSYZPZxCqcq9N",
-  "policy": "CVQ3eEYdHQRbnFtaMYUc7A1kZeidcm93283tRD9ytkTH",
-  "allowlist": "2HEDvz9iLcDZ1gR7KFUcPgXXEzeZZBmBTsv3gxtBX16P",
+  "pool": "J7G4gd1VkraYuf3N2M3kkBoCVkKJF1e2HzLJ9c3FLqxz",
+  "policy": "HKZQXex4QHWGQ9XpArMM5KAmykjywDNaiJkQDr2ud9qH",
+  "allowlist": "BxUfW1mjLPwaaBsdMt9R293hQjX3oJxo6KujypwyKX5H",
   "mints": {
     "mock-USDC": "FNbLLK2RcFAgmCu8ssHD4smu9udd9E5d7Cj9VmjnPAzc",
     "mock-USDT": "7pXn9qaBoE9JsQ6DbKGNRfXPRvqd8oi1YfyYtRRgxmwV",
     "mock-PYUSD": "6E15qXfBKzudpA9vSdvQAZRZKEB9zbCfHpKnkDGWmwBD"
   },
   "vaults": {
-    "mock-USDC": "47TD1pH1hwdReDU2bXQb5Vm1pgjxXBws983w9JJXJkS5",
-    "mock-USDT": "Dvu58Mj4wwuhVFhqHXJ9PuMZj7BJG67dLgG6Wnx3FqbQ",
-    "mock-PYUSD": "P1S7abn2rV3NCrRFnkHDdKyL5uQr7rDpt67wpDP8GeX"
+    "mock-USDC": "DwqipHNiz6JWKMEk7ck9x8JVLpeMHAjtfX7irRagao1e",
+    "mock-USDT": "F3Bc8gYMsKdzms2vArhecrkwdgAtnQkjWo8tjhfpJyak",
+    "mock-PYUSD": "2BdNKhV5zipYLi9SQHwjSvJiAAjJHhmx8ApCVpqxXRWp"
   },
   "params": {
     "nAssets": 3,
@@ -24,35 +24,35 @@
     "maxTradeAmount": "50000000000000",
     "maxDailyVolume": "500000000000000"
   },
-  "generatedAt": "2026-03-13T15:36:01.123Z",
+  "generatedAt": "2026-03-14T12:50:53.774Z",
   "ticks": [
     {
-      "index": 10,
-      "address": "HR4k1XpyFCqPme3MXxxjE4jUg9SCxGzY89hDHEKkmEgY",
+      "index": 0,
+      "address": "yggjUiuZ8Mo8YmqHQFJDtS7ygdisTxbnHVzDVoT4kPo",
       "kRaw": "1735977712932795084391402662",
       "label": "Wide (low concentration)"
     },
     {
-      "index": 11,
-      "address": "EQDKjjRVdH8Bh2NyfURr2nWM7v3UCwS4oe1hvYNX7Y8F",
+      "index": 1,
+      "address": "FvPLBhgzGgmuRBnMwf9CTHXyBRFGArWKAT1TjiLdRfod",
       "kRaw": "1874328293498794729147550886",
       "label": "Moderate-wide"
     },
     {
-      "index": 12,
-      "address": "Pyt9N25KzKJ6NbxTW7hKdoSrk9mJ9odVGWxzr5fnDLx",
+      "index": 2,
+      "address": "Edud4zGMLsZ6r6w6j9d5k3biod4zdbYLxdXdfudNCQMj",
       "kRaw": "2058795734253460956515486886",
       "label": "Balanced (medium concentration)"
     },
     {
-      "index": 13,
-      "address": "832dGWeUrXPzYD2ekisnW3xJRmqEfS54dHPExyFufehV",
+      "index": 3,
+      "address": "DZtg1sGFtTYE8yvNn4B7rUjdhJnwFcWfroeDLPhyzTs6",
       "kRaw": "2243263175008127080804207782",
       "label": "Moderate-narrow"
     },
     {
-      "index": 14,
-      "address": "G35WYsLMJDPcrse3a3e2Q32uWvg9NVjtaYVyLwfv1bHU",
+      "index": 4,
+      "address": "F22ZLJ1SwWuo1vsbaV3vZoL8oEKzXs3VYKueokgqrVoP",
       "kRaw": "2427730615762793342531882150",
       "label": "Narrow (high concentration)"
     }

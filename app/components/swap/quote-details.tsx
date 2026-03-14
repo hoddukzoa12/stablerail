@@ -12,7 +12,6 @@ interface QuoteDetailsProps {
   slippageBps: number;
 }
 
-/** Format basis points to percentage string */
 /** Format basis points (fractional) to percentage string.
  *  Preserves sub-0.01% precision to showcase Orbital's low price impact. */
 function bpsToPercent(bps: number): string {

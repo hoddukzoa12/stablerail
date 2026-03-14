@@ -421,8 +421,11 @@ impl SwapCalculator {
         }
 
         // 5. Slippage 계산
+        // Use net input (post-fee) to isolate true market impact from LP fee.
         let mid_price = reserves.price(token_in, token_out, &self.sphere);
-        let exec_price = amount_in / amount_out;
+        let fee = amount_in * self.sphere.fee_rate();
+        let net_amount_in = amount_in - fee;
+        let exec_price = net_amount_in / amount_out;
         let slippage_bp = ((exec_price - mid_price) / mid_price) * FixedPoint::from(10_000);
 
         Ok(SwapResult {
@@ -431,7 +434,7 @@ impl SwapCalculator {
             slippage_bp,
             crosses_tick: false,
             crossed_ticks: vec![],
-            fee: amount_in * self.sphere.fee_rate(),
+            fee,
         })
     }
 }
@@ -745,7 +748,10 @@ impl SwapCalculator {
             total_out = total_out + final_out;
         }
 
-        let exec_price = total_amount_in / total_out;
+        // Use net input (post-fee) to isolate true market impact from LP fee.
+        let fee = total_amount_in * self.sphere.fee_rate();
+        let net_amount_in = total_amount_in - fee;
+        let exec_price = net_amount_in / total_out;
         let mid_price = reserves.price(token_in, token_out, &self.sphere);
         let slippage_bp = ((exec_price - mid_price) / mid_price) * FixedPoint::from(10_000);
 
@@ -755,7 +761,7 @@ impl SwapCalculator {
             slippage_bp,
             crosses_tick: true,
             crossed_ticks: all_crossings,
-            fee: total_amount_in * self.sphere.fee_rate(),
+            fee,
         })
     }
 
