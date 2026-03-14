@@ -20,40 +20,40 @@
     "nAssets": 3,
     "feeRateBps": 1,
     "decimals": 6,
-    "initialDepositPerAsset": "50000000000000",
+    "initialDepositPerAsset": "1000000000000",
     "maxTradeAmount": "50000000000000",
     "maxDailyVolume": "500000000000000"
   },
-  "generatedAt": "2026-03-14T14:02:21.444Z",
+  "generatedAt": "2026-03-14T14:25:15.040Z",
   "ticks": [
     {
-      "index": 10,
-      "address": "BWCVo48xivboeUnM5uN9FHmNwg9cSu4jojbeEx4x9XXY",
-      "kRaw": "1598549469570568770637876390",
+      "index": 5,
+      "address": "G3hsvbjpZiw9LZ8ychppr8g76FT2uMsGN9jb1o4fWRLE",
+      "kRaw": "31970989391411375413764159",
       "label": "Max efficiency (18×)"
     },
     {
-      "index": 11,
-      "address": "13bQDSHhoT6p5KDCdmmDbbMyn9kD2mxA88e16A74bJSe",
-      "kRaw": "1599471806774342101640498342",
+      "index": 6,
+      "address": "AnKNGRT4TqK6s4qxTTLF5P7oHXcus1AoBWLM198LMtRN",
+      "kRaw": "31989436135486842034823231",
       "label": "Optimal for stablecoins (13×)"
     },
     {
-      "index": 12,
-      "address": "9mVzMRJs8zxxaKm7z99Ecdy4RFvXcRzEPk5zBPBxcfWr",
-      "kRaw": "1602238818385662094782581926",
+      "index": 7,
+      "address": "FVsCyGdpo1NhdzofFMdPM7hcyyZMGcnZMtjzcxZkf1T6",
+      "kRaw": "32044776367713241889611839",
       "label": "Safe — covers SVB-level depegs (8×)"
     },
     {
-      "index": 13,
-      "address": "AyMyNq4vdDk1jq2QfpBGqLoCgQBwKvBrH8VXCuURfW1Q",
-      "kRaw": "1606850504404528749929909414",
+      "index": 8,
+      "address": "21ExjjHqeDjsJZPJMELj1q6XkjxQTfHZxddDFxhKoZJS",
+      "kRaw": "32137010088090574986518591",
       "label": "Conservative (5.8×)"
     },
     {
-      "index": 14,
-      "address": "GbAeZEAMVjzAKUdRdcHzEC3PYLt891mU5KzqstkKUpeM",
-      "kRaw": "1625297248479995369445477542",
+      "index": 9,
+      "address": "GaJ4uWbTqY4vS4DdRyBkHAwvCYLGa2zuNwprmG2V6AVY",
+      "kRaw": "32505944969599907407700031",
       "label": "Wide fallback (3.5×)"
     }
   ]
