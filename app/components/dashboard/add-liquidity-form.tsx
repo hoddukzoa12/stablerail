@@ -154,20 +154,26 @@ export function AddLiquidityForm({
         await new Promise((resolve) => setTimeout(resolve, 2000));
         await refreshTicks();
 
-        // Derive the new tick PDA
+        // Derive the new tick PDA using k_raw (i128 LE, 16 bytes)
+        // Must match on-chain seeds: ["tick", pool, k_raw.to_le_bytes()]
         const encoder = getAddressEncoder();
-        const tickCountBytes = new Uint8Array(2);
-        new DataView(tickCountBytes.buffer).setUint16(
-          0,
-          pool.tickCount,
-          true,
-        );
+        const kRawBytes = new Uint8Array(16);
+        const kView = new DataView(kRawBytes.buffer);
+        let kVal = tickSelection.kRaw!;
+        if (kVal < 0n) {
+          kVal = (1n << 128n) + kVal; // two's complement for signed i128
+        }
+        const lo = kVal & ((1n << 64n) - 1n);
+        const hi = (kVal >> 64n) & ((1n << 64n) - 1n);
+        kView.setBigUint64(0, lo, true);
+        kView.setBigUint64(8, hi, true);
+
         const [tickPda] = await getProgramDerivedAddress({
           programAddress: PROGRAM_ID as Address,
           seeds: [
             new TextEncoder().encode("tick"),
             encoder.encode(POOL_PDA as Address),
-            tickCountBytes,
+            kRawBytes,
           ],
         });
         tickAddr = tickPda;
@@ -181,8 +187,10 @@ export function AddLiquidityForm({
       setAmounts(tokens.map(() => ""));
       setTickSelection({ mode: "full-range" });
       onSuccess();
-    } catch {
-      // error is tracked in the hooks
+    } catch (err) {
+      // Hook-level errors (useAddLiquidity, useCreateTick) are tracked
+      // via their own state. Log unexpected errors for debugging.
+      console.error("[AddLiquidityForm] submit failed:", err);
     }
   }, [
     amounts,

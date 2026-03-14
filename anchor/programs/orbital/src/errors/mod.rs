@@ -139,4 +139,10 @@ pub enum OrbitalError {
 
     #[msg("Failed to serialize tick state back to account")]
     TickSerializationFailed,
+
+    #[msg("Tick account does not belong to this pool")]
+    TickPoolMismatch,
+
+    #[msg("Duplicate tick account in remaining_accounts")]
+    DuplicateTickAccount,
 }

@@ -55,6 +55,13 @@ pub fn handler(ctx: Context<CreateTick>, params: CreateTickParams) -> Result<()>
     // ── Validation ──
     require!(pool.is_active, OrbitalError::PoolNotActive);
 
+    // Only pool authority can create ticks (prevents griefing via tick spam
+    // that would brick swaps by exceeding Solana's per-tx account limit).
+    require!(
+        ctx.accounts.creator.key() == pool.authority,
+        OrbitalError::Unauthorized
+    );
+
     // Convert raw k to FixedPoint and validate bounds via Tick::new
     let k = FixedPoint::from_raw(params.k_raw);
     let tick_math = Tick::new(k, &pool.sphere)?;

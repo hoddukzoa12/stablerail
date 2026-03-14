@@ -139,7 +139,7 @@ pub fn handler<'info>(
 
         // Validate tick belongs to this pool and is interior (active).
         // Boundary ticks are deactivated — deposits would corrupt interior accounting.
-        require!(tick.pool == pool.key(), OrbitalError::InvalidVaultAddress);
+        require!(tick.pool == pool.key(), OrbitalError::TickPoolMismatch);
         require!(
             tick.status == TickStatus::Interior,
             OrbitalError::InvalidTickBound

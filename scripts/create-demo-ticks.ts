@@ -120,9 +120,17 @@ function derivePoolPda(authority: PublicKey): [PublicKey, number] {
   );
 }
 
-function deriveTickPda(pool: PublicKey, tickIndex: number): [PublicKey, number] {
-  const buf = Buffer.alloc(2);
-  buf.writeUInt16LE(tickIndex);
+function deriveTickPda(pool: PublicKey, kRaw: bigint): [PublicKey, number] {
+  // seeds = ["tick", pool, k_raw_le_bytes] — i128 LE (16 bytes)
+  const buf = Buffer.alloc(16);
+  let value = kRaw;
+  if (value < 0n) {
+    value = (1n << 128n) + value; // two's complement
+  }
+  const lo = value & ((1n << 64n) - 1n);
+  const hi = (value >> 64n) & ((1n << 64n) - 1n);
+  buf.writeBigUInt64LE(lo, 0);
+  buf.writeBigUInt64LE(hi, 8);
   return PublicKey.findProgramAddressSync(
     [Buffer.from("tick"), pool.toBuffer(), buf],
     PROGRAM_ID
@@ -292,16 +300,17 @@ async function main() {
   const createdTicks: { index: number; pda: PublicKey; k: bigint }[] = [];
 
   for (let i = 0; i < demoKValues.length; i++) {
-    const currentTickCount = tickCount + i;
-    const [tickPda] = deriveTickPda(poolPda, currentTickCount);
+    const kRaw = demoKValues[i];
+    const tickIndex = tickCount + i;
+    const [tickPda] = deriveTickPda(poolPda, kRaw);
 
     if (await accountExists(connection, tickPda)) {
-      console.log(`  Tick[${currentTickCount}] already exists at ${tickPda.toBase58()} — skipping`);
-      createdTicks.push({ index: currentTickCount, pda: tickPda, k: demoKValues[i] });
+      console.log(`  Tick[${tickIndex}] already exists at ${tickPda.toBase58()} — skipping`);
+      createdTicks.push({ index: tickIndex, pda: tickPda, k: kRaw });
       continue;
     }
 
-    console.log(`  Creating tick[${currentTickCount}]: ${DEMO_TICK_LABELS[i]}...`);
+    console.log(`  Creating tick[${tickIndex}]: ${DEMO_TICK_LABELS[i]}...`);
 
     try {
       const tx = await program.methods
@@ -318,7 +327,7 @@ async function main() {
         .rpc();
 
       console.log(`    ✓ tx: ${tx}`);
-      createdTicks.push({ index: currentTickCount, pda: tickPda, k: demoKValues[i] });
+      createdTicks.push({ index: tickIndex, pda: tickPda, k: kRaw });
     } catch (err) {
       console.error(`    ✗ Failed: ${err}`);
       throw err;

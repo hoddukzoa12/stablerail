@@ -35,8 +35,8 @@ pub struct SwapParams {
 ///   [3] = user_ata_out (writable, user's destination for token_out)
 ///   [4..4+T) = tick accounts (writable, optional — enables trade segmentation)
 ///
-/// When no tick accounts are provided (len == 4), the swap runs the
-/// original single-segment path (backward compatible).
+/// When pool.tick_count == 0 (no ticks created), no tick accounts are
+/// expected and the swap runs the single-segment analytical path.
 #[derive(Accounts)]
 pub struct ExecuteSwap<'info> {
     #[account(mut)]
@@ -129,7 +129,7 @@ pub fn handler<'info>(
     let mut swap_execution_price = FixedPoint::zero();
 
     let (total_out, total_fee) = if tick_accounts.is_empty() {
-        // ── No ticks: original single-segment path (backward compatible) ──
+        // ── No ticks (tick_count == 0): single-segment analytical path ──
         let precise_amount_out = compute_amount_out_analytical(
             &pool.sphere,
             pool.active_reserves(),
@@ -253,9 +253,11 @@ pub fn handler<'info>(
             OrbitalError::SlippageExceeded
         );
 
-        // Accumulate fee into pool accounting (single-segment path
-        // does this inside swap::execute_swap, but segmented path skips it).
+        // Accumulate fee and volume into pool accounting (single-segment
+        // path does this inside swap::execute_swap, but segmented path
+        // handles it here). Uses gross amount_in for volume consistency.
         pool.total_fees = pool.total_fees.checked_add(fee)?;
+        pool.total_volume = pool.total_volume.checked_add(amount_in)?;
 
         (total_out, fee)
     };
@@ -338,15 +340,24 @@ pub fn handler<'info>(
 // ══════════════════════════════════════════════════════════════
 
 /// Load tick (k, status) pairs from remaining_accounts for boundary detection.
-/// Validates each tick account belongs to this pool.
+/// Validates each tick account belongs to this pool and rejects duplicates.
 fn load_tick_data(
     tick_accounts: &[AccountInfo],
     pool_key: &Pubkey,
 ) -> Result<Vec<(FixedPoint, TickStatus)>> {
     let mut data = Vec::with_capacity(tick_accounts.len());
+    // Reject duplicate tick accounts: a caller could pass the same tick
+    // multiple times to satisfy the count guard while omitting others,
+    // causing flip_tick to miss the actual nearest boundary tick.
+    let mut seen_keys = Vec::with_capacity(tick_accounts.len());
     for acc in tick_accounts {
+        require!(
+            !seen_keys.contains(acc.key),
+            OrbitalError::DuplicateTickAccount
+        );
+        seen_keys.push(*acc.key);
         let tick = load_tick_state(acc)?;
-        require!(tick.pool == *pool_key, OrbitalError::InvalidVaultAddress);
+        require!(tick.pool == *pool_key, OrbitalError::TickPoolMismatch);
         data.push((tick.k, tick.status));
     }
     Ok(data)
@@ -414,8 +425,8 @@ fn apply_partial_swap(
     require!(new_out.raw >= 0, OrbitalError::InsufficientLiquidity);
     pool.reserves[token_out] = new_out;
 
-    // Update volume tracking
-    pool.total_volume = pool.total_volume.checked_add(amount_in)?;
+    // Note: volume tracking is handled by the caller (handler or execute_swap)
+    // to ensure consistent gross-amount accounting across all paths.
 
     Ok(())
 }
