@@ -75,10 +75,24 @@ const DEMO_TICK_LABELS = [
   "Wide fallback (3.5×)",
 ];
 
-// Per-tick liquidity deposit: $2M per asset (total $6M per tick, $30M across 5 ticks)
-const LIQUIDITY_PER_ASSET = BigInt(2_000_000_000_000); // 2M at 6 decimals
+// Per-tick liquidity deposit (per asset, 6 decimals):
+// Concentrate majority of capital in highest-efficiency ticks near peg.
+// $150M TVL pool → ~$40M/asset in ticks = ~80% of pool in concentrated positions.
+//   Max 18×  → $20M/asset (dominant — where 99% of stablecoin trades happen)
+//   Optimal  → $12M/asset
+//   Safe     → $5M/asset
+//   Conserv  → $2M/asset
+//   Wide     → $1M/asset
+// Total: $40M/asset × 3 assets = $120M in ticks (80% of $150M TVL)
+const LIQUIDITY_PER_TICK: bigint[] = [
+  BigInt(20_000_000_000_000),  // Max 18×:     $20M/asset
+  BigInt(12_000_000_000_000),  // Optimal 13×: $12M/asset
+  BigInt(5_000_000_000_000),   // Safe 8×:     $5M/asset
+  BigInt(2_000_000_000_000),   // Conserv 5.8×: $2M/asset
+  BigInt(1_000_000_000_000),   // Wide 3.5×:   $1M/asset
+];
 // Extra mint amount per token for liquidity deposits
-const EXTRA_MINT_PER_ASSET = BigInt(15_000_000_000_000); // 15M at 6 decimals (buffer)
+const EXTRA_MINT_PER_ASSET = BigInt(50_000_000_000_000); // 50M at 6 decimals (buffer for $40M/asset)
 
 // ────────────────────────────────────────────
 // Q64.64 Math Helpers (mirrors on-chain FixedPoint)
@@ -357,7 +371,7 @@ async function main() {
 
     // Get deployer ATAs and mint extra tokens if needed
     const ataAddresses: PublicKey[] = [];
-    const totalNeeded = LIQUIDITY_PER_ASSET * BigInt(createdTicks.length);
+    const totalNeeded = LIQUIDITY_PER_TICK.reduce((a, b) => a + b, 0n);
     for (const mint of mintKeys) {
       const ata = await getOrCreateAssociatedTokenAccount(
         connection,
@@ -378,24 +392,27 @@ async function main() {
     const freshPool = await (program.account as any).poolState.fetch(poolPda);
     let positionCount = BigInt((freshPool.positionCount as BN).toString());
 
-    // Deposit amounts: $5M per asset per tick
-    const amounts: BN[] = [];
-    for (let i = 0; i < 8; i++) {
-      if (i < nAssets) {
-        amounts.push(new BN(LIQUIDITY_PER_ASSET.toString()));
-      } else {
-        amounts.push(new BN(0));
-      }
-    }
+    for (let ti = 0; ti < createdTicks.length; ti++) {
+      const tick = createdTicks[ti];
+      const liqPerAsset = LIQUIDITY_PER_TICK[ti] ?? LIQUIDITY_PER_TICK[LIQUIDITY_PER_TICK.length - 1];
 
-    for (const tick of createdTicks) {
+      // Build amounts array for this tick
+      const amounts: BN[] = [];
+      for (let i = 0; i < 8; i++) {
+        if (i < nAssets) {
+          amounts.push(new BN(liqPerAsset.toString()));
+        } else {
+          amounts.push(new BN(0));
+        }
+      }
+
       const [positionPda] = derivePositionPda(
         poolPda,
         deployer.publicKey,
         positionCount
       );
 
-      const amtM = (Number(LIQUIDITY_PER_ASSET) / 1e6 / 1e6).toFixed(1);
+      const amtM = (Number(liqPerAsset) / 1e6 / 1e6).toFixed(1);
       console.log(`  Adding $${amtM}M/asset to tick[${tick.index}]...`);
 
       // remaining_accounts: [vaults(rw), atas(rw), tick(rw)]

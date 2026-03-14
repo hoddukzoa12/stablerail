@@ -24,34 +24,34 @@
     "maxTradeAmount": "50000000000000",
     "maxDailyVolume": "500000000000000"
   },
-  "generatedAt": "2026-03-14T13:57:08.958Z",
+  "generatedAt": "2026-03-14T14:02:21.444Z",
   "ticks": [
     {
-      "index": 5,
+      "index": 10,
       "address": "BWCVo48xivboeUnM5uN9FHmNwg9cSu4jojbeEx4x9XXY",
       "kRaw": "1598549469570568770637876390",
       "label": "Max efficiency (18×)"
     },
     {
-      "index": 6,
+      "index": 11,
       "address": "13bQDSHhoT6p5KDCdmmDbbMyn9kD2mxA88e16A74bJSe",
       "kRaw": "1599471806774342101640498342",
       "label": "Optimal for stablecoins (13×)"
     },
     {
-      "index": 7,
+      "index": 12,
       "address": "9mVzMRJs8zxxaKm7z99Ecdy4RFvXcRzEPk5zBPBxcfWr",
       "kRaw": "1602238818385662094782581926",
       "label": "Safe — covers SVB-level depegs (8×)"
     },
     {
-      "index": 8,
+      "index": 13,
       "address": "AyMyNq4vdDk1jq2QfpBGqLoCgQBwKvBrH8VXCuURfW1Q",
       "kRaw": "1606850504404528749929909414",
       "label": "Conservative (5.8×)"
     },
     {
-      "index": 9,
+      "index": 14,
       "address": "GbAeZEAMVjzAKUdRdcHzEC3PYLt891mU5KzqstkKUpeM",
       "kRaw": "1625297248479995369445477542",
       "label": "Wide fallback (3.5×)"
