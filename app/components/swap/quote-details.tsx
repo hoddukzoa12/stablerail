@@ -13,9 +13,13 @@ interface QuoteDetailsProps {
 }
 
 /** Format basis points to percentage string */
+/** Format basis points (fractional) to percentage string.
+ *  Preserves sub-0.01% precision to showcase Orbital's low price impact. */
 function bpsToPercent(bps: number): string {
   const pct = bps / 100;
-  if (pct < 0.01) return "< 0.01%";
+  if (pct === 0) return "0%";
+  if (pct < 0.001) return "< 0.001%";
+  if (pct < 0.01) return `${pct.toFixed(3)}%`;
   return `${pct.toFixed(2)}%`;
 }
 

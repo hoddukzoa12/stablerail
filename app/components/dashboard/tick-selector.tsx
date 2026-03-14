@@ -206,6 +206,10 @@ export function TickSelector({
                           mode: "concentrated",
                           kRaw: freshKRaw,
                         });
+                      } else {
+                        // Clear stale kRaw when input is empty or invalid,
+                        // preventing accidental tick creation with previous value.
+                        onChange({ mode: "concentrated", kRaw: undefined });
                       }
                     }
                   }}

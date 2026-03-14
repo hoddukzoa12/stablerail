@@ -229,6 +229,10 @@ pub fn handler<'info>(
                         apply_partial_swap(pool, token_in, token_out, delta, partial_out)?;
                         total_out = total_out.checked_add(partial_out)?;
 
+                        // Snapshot alpha at the crossing boundary BEFORE flip changes reserves.
+                        // pool.alpha_cache reflects post-partial-swap state = the boundary value.
+                        let alpha_at_boundary = pool.alpha_cache;
+
                         // Flip the crossed tick's status and redistribute reserves
                         let (from_status, tick_key) = flip_tick(tick_accounts, k_cross, pool)?;
 
@@ -236,8 +240,8 @@ pub fn handler<'info>(
                         recompute_sphere(pool)?;
                         update_caches(pool)?;
 
-                        // Emit TickCrossed event (uses pre-flip status and pubkey from flip_tick)
-                        emit_tick_crossed_event(tick_key, pool.key(), pool.alpha_cache, from_status)?;
+                        // Emit TickCrossed event with the boundary alpha (not post-flip alpha)
+                        emit_tick_crossed_event(tick_key, pool.key(), alpha_at_boundary, from_status)?;
 
                         remaining_in = remaining_in.checked_sub(delta)?;
                     }

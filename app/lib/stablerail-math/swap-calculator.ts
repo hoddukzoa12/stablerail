@@ -271,6 +271,9 @@ function computeSlippageBps(
     return 65535; // saturate on overflow
   }
 
-  const bps = bpsFp.toU64();
-  return Number(bps < 65535n ? bps : 65535n);
+  // Use toNumber() to preserve sub-bps fractional precision.
+  // Stablecoin AMMs routinely produce < 1 bps price impact;
+  // truncating to integer bps would hide Orbital's advantage over Curve.
+  const bps = bpsFp.toNumber();
+  return Math.min(bps, 65535);
 }
