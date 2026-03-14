@@ -5,7 +5,7 @@ use crate::domain::liquidity::add_liquidity_to_pool;
 use crate::errors::OrbitalError;
 use crate::events::LiquidityAdded;
 use crate::math::{sphere::MAX_ASSETS, FixedPoint};
-use crate::state::{PoolState, PositionState, TickState};
+use crate::state::{PoolState, PositionState, TickState, TickStatus};
 
 #[derive(AnchorSerialize, AnchorDeserialize)]
 pub struct AddLiquidityParams {
@@ -137,8 +137,13 @@ pub fn handler<'info>(
         let tick_acc = &remaining[2 * n];
         let mut tick = load_tick_state_mut(tick_acc)?;
 
-        // Validate tick belongs to this pool
+        // Validate tick belongs to this pool and is interior (active).
+        // Boundary ticks are deactivated — deposits would corrupt interior accounting.
         require!(tick.pool == pool.key(), OrbitalError::InvalidVaultAddress);
+        require!(
+            tick.status == TickStatus::Interior,
+            OrbitalError::InvalidTickBound
+        );
 
         // Add deposits to tick's per-tick reserves
         for i in 0..n {

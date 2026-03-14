@@ -433,10 +433,20 @@ fn flip_tick(
 
             match tick.status {
                 TickStatus::Interior => {
-                    // Interior → Boundary: remove tick reserves from pool
+                    // Interior → Boundary: recompute tick's live share from
+                    // its liquidity fraction (tick.reserves may be stale since
+                    // interior swaps update pool.reserves but not tick.reserves).
                     tick.status = TickStatus::Boundary;
+                    let fraction = if pool.total_interior_liquidity.is_positive() {
+                        tick.liquidity.checked_div(pool.total_interior_liquidity)?
+                    } else {
+                        FixedPoint::zero()
+                    };
                     for i in 0..n {
-                        pool.reserves[i] = pool.reserves[i].checked_sub(tick.reserves[i])?;
+                        // Snapshot the live proportional reserve for this tick
+                        let live_share = pool.reserves[i].checked_mul(fraction)?;
+                        tick.reserves[i] = live_share;
+                        pool.reserves[i] = pool.reserves[i].checked_sub(live_share)?;
                     }
                     pool.total_interior_liquidity = pool
                         .total_interior_liquidity
@@ -446,7 +456,8 @@ fn flip_tick(
                         .checked_add(tick.liquidity)?;
                 }
                 TickStatus::Boundary => {
-                    // Boundary → Interior: add tick reserves back to pool
+                    // Boundary → Interior: add tick's frozen reserves back to pool.
+                    // Boundary reserves are accurate (frozen at crossing time).
                     tick.status = TickStatus::Interior;
                     for i in 0..n {
                         pool.reserves[i] = pool.reserves[i].checked_add(tick.reserves[i])?;
