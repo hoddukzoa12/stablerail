@@ -48,10 +48,11 @@ const DEVNET_RPC = "https://api.devnet.solana.com";
 const N_ASSETS = 3;
 const FEE_RATE_BPS = 1;
 const DECIMALS = 6;
-// $50M per asset at 6 decimals — Curve-scale demo liquidity ($150M TVL)
-const INITIAL_DEPOSIT_PER_ASSET = BigInt(50_000_000_000_000);
-// 2x deposit for swap buffer
-const MINT_AMOUNT_PER_ASSET = BigInt(100_000_000_000_000);
+// $1M per asset at 6 decimals — minimal full-range base ($3M TVL)
+// Most liquidity lives in concentrated ticks for better capital efficiency.
+const INITIAL_DEPOSIT_PER_ASSET = BigInt(1_000_000_000_000);
+// Enough supply for concentrated tick deposits (~$10M/asset in ticks)
+const MINT_AMOUNT_PER_ASSET = BigInt(20_000_000_000_000);
 // Policy: $50M max per trade, $500M daily volume (scaled for $150M TVL)
 const MAX_TRADE_AMOUNT = BigInt(50_000_000_000_000);
 const MAX_DAILY_VOLUME = BigInt(500_000_000_000_000);

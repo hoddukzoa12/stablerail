@@ -10,8 +10,8 @@
  *   capital_efficiency = x_base / (x_base - x_min)
  *
  * Demo strategy:
- *   - 5 ticks at 15%, 30%, 50%, 70%, 90% of k_range → increasing efficiency
- *   - Optionally add liquidity to each tick (concentrated deposits)
+ *   - 5 ticks near k_min (0.1%–3% of k_range) → stablecoin-optimized
+ *   - Optionally add weighted liquidity (more capital in highest-efficiency ticks)
  *
  * Usage:
  *   cd scripts && npx tsx create-demo-ticks.ts
@@ -77,22 +77,22 @@ const DEMO_TICK_LABELS = [
 
 // Per-tick liquidity deposit (per asset, 6 decimals):
 // Concentrate majority of capital in highest-efficiency ticks near peg.
-// $150M TVL pool → ~$40M/asset in ticks = ~80% of pool in concentrated positions.
-//   Max 18×  → $20M/asset (dominant — where 99% of stablecoin trades happen)
-//   Optimal  → $12M/asset
+// Full range has only $1M/asset — most capital is in concentrated ticks.
+//   Max 18×  → $25M/asset (dominant — where 99% of stablecoin trades happen)
+//   Optimal  → $15M/asset
 //   Safe     → $5M/asset
-//   Conserv  → $2M/asset
-//   Wide     → $1M/asset
-// Total: $40M/asset × 3 assets = $120M in ticks (80% of $150M TVL)
+//   Conserv  → $2.5M/asset
+//   Wide     → $1.5M/asset
+// Total: $49M/asset × 3 assets = $147M in ticks + $3M full range = $150M TVL
 const LIQUIDITY_PER_TICK: bigint[] = [
-  BigInt(20_000_000_000_000),  // Max 18×:     $20M/asset
-  BigInt(12_000_000_000_000),  // Optimal 13×: $12M/asset
+  BigInt(25_000_000_000_000),  // Max 18×:     $25M/asset
+  BigInt(15_000_000_000_000),  // Optimal 13×: $15M/asset
   BigInt(5_000_000_000_000),   // Safe 8×:     $5M/asset
-  BigInt(2_000_000_000_000),   // Conserv 5.8×: $2M/asset
-  BigInt(1_000_000_000_000),   // Wide 3.5×:   $1M/asset
+  BigInt(2_500_000_000_000),   // Conserv 5.8×: $2.5M/asset
+  BigInt(1_500_000_000_000),   // Wide 3.5×:   $1.5M/asset
 ];
 // Extra mint amount per token for liquidity deposits
-const EXTRA_MINT_PER_ASSET = BigInt(50_000_000_000_000); // 50M at 6 decimals (buffer for $40M/asset)
+const EXTRA_MINT_PER_ASSET = BigInt(60_000_000_000_000); // 60M at 6 decimals (buffer for $49M/asset)
 
 // ────────────────────────────────────────────
 // Q64.64 Math Helpers (mirrors on-chain FixedPoint)
