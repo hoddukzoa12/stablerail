@@ -1,18 +1,23 @@
 "use client";
 
 /**
- * Tick Selector — choose Full Range or Concentrated (Tick) LP mode.
+ * Tick Selector — choose Full Range or Concentrated LP mode.
  *
- * When "Concentrated" is selected, shows:
- *   - Existing ticks to select from
- *   - Or a k-value input to create a new tick
+ * Concentrated mode offers:
+ *   - Preset concentration levels (Low / Medium / High)
+ *   - Custom k-value input with clear min/max bounds
  *   - Real-time preview of tick properties (x_min, x_max, depeg_price, etc.)
+ *   - Auto-selects existing tick if one matches, otherwise creates new
  */
 
 import { useState, useMemo } from "react";
 import { Badge } from "../ui/badge";
 import { q6464ToNumber } from "../../lib/format-utils";
-import { computeTickPreview } from "../../lib/tick-math";
+import {
+  computeTickPreview,
+  computeKMin,
+  computeKMax,
+} from "../../lib/tick-math";
 import type { TickInfo } from "../../lib/tick-deserializer";
 import type { PoolState } from "../../lib/stablerail-math";
 
@@ -34,11 +39,82 @@ interface TickSelectorProps {
   onChange: (selection: TickSelection) => void;
 }
 
-/** Format a number with 4 decimal places. */
+// ── Preset concentration levels ──
+
+type PresetLevel = "low" | "medium" | "high" | "custom";
+
+interface PresetConfig {
+  label: string;
+  description: string;
+  /** Position between k_min and k_max (0 = widest, 1 = narrowest) */
+  kPercent: number;
+  color: string;
+  activeColor: string;
+}
+
+const PRESETS: Record<Exclude<PresetLevel, "custom">, PresetConfig> = {
+  low: {
+    label: "Safe",
+    description: "Covers SVB-level depegs",
+    kPercent: 0.005,
+    color: "text-success",
+    activeColor: "bg-success/15 ring-1 ring-success/40 text-success",
+  },
+  medium: {
+    label: "Optimal",
+    description: "Best for stablecoins",
+    kPercent: 0.002,
+    color: "text-accent-blue",
+    activeColor: "bg-accent-blue/15 ring-1 ring-accent-blue/40 text-accent-blue",
+  },
+  high: {
+    label: "Max",
+    description: "Maximum efficiency",
+    kPercent: 0.001,
+    color: "text-warning",
+    activeColor: "bg-warning/15 ring-1 ring-warning/40 text-warning",
+  },
+};
+
+/** Format a number with 2–4 decimal places. */
 function fmt(n: number): string {
   return n.toLocaleString("en-US", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 4,
+  });
+}
+
+/** Format depeg price — show "< $0.01" for very small values. */
+function fmtDepeg(n: number): string {
+  if (n <= 0.005) return "< $0.01";
+  return `$${fmt(n)}`;
+}
+
+/** Convert a floating k value to Q64.64 raw bigint. */
+function kToQ6464Raw(k: number): bigint {
+  const SCALE = 1n << 64n;
+  const negative = k < 0;
+  const abs = Math.abs(k);
+  const intPart = BigInt(Math.floor(abs));
+  const fracPart = abs - Number(intPart);
+  const fracScaled = BigInt(Math.round(fracPart * Number(SCALE)));
+  let raw = (intPart << 64n) + fracScaled;
+  if (negative) raw = -raw;
+  return raw;
+}
+
+/**
+ * Find an existing tick whose k value is close enough to the target.
+ * Tolerance: 0.1% relative difference.
+ */
+function findMatchingTick(
+  ticks: TickInfo[],
+  targetK: number,
+): TickInfo | undefined {
+  return ticks.find((t) => {
+    if (t.status !== "Interior") return false;
+    const diff = Math.abs(t.kDisplay - targetK) / targetK;
+    return diff < 0.001;
   });
 }
 
@@ -49,32 +125,70 @@ export function TickSelector({
   selection,
   onChange,
 }: TickSelectorProps) {
+  const [activePreset, setActivePreset] = useState<PresetLevel | null>(null);
   const [kInput, setKInput] = useState("");
 
   const radius = q6464ToNumber(pool.radius.raw);
   const n = pool.nAssets;
+  const kMin = computeKMin(radius, n);
+  const kMax = computeKMax(radius, n);
 
-  // Compute preview for the k input value
-  const kPreview = useMemo(() => {
+  // Compute k value for a given preset level
+  function presetToK(percent: number): number {
+    return kMin + (kMax - kMin) * percent;
+  }
+
+  // Get current k value (from preset or custom input)
+  const currentK = useMemo(() => {
+    if (activePreset && activePreset !== "custom") {
+      return presetToK(PRESETS[activePreset].kPercent);
+    }
     const k = parseFloat(kInput);
     if (!kInput || isNaN(k)) return null;
-    return computeTickPreview(k, radius, n);
-  }, [kInput, radius, n]);
+    return k;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activePreset, kInput, kMin, kMax]);
 
-  // Convert a k number string to Q64.64 raw bigint
-  function computeKRaw(input: string): bigint | null {
-    const k = parseFloat(input);
-    if (!input || isNaN(k)) return null;
-    // Q64.64: raw = k * 2^64
-    const SCALE = 1n << 64n;
-    const negative = k < 0;
-    const abs = Math.abs(k);
-    const intPart = BigInt(Math.floor(abs));
-    const fracPart = abs - Number(intPart);
-    const fracScaled = BigInt(Math.round(fracPart * Number(SCALE)));
-    let raw = (intPart << 64n) + fracScaled;
-    if (negative) raw = -raw;
-    return raw;
+  // Compute preview for current k
+  const kPreview = useMemo(() => {
+    if (currentK === null) return null;
+    return computeTickPreview(currentK, radius, n);
+  }, [currentK, radius, n]);
+
+  // Handle preset selection
+  function handlePresetSelect(level: Exclude<PresetLevel, "custom">) {
+    setActivePreset(level);
+    const k = presetToK(PRESETS[level].kPercent);
+    setKInput(k.toFixed(4));
+
+    // Check if an existing tick matches
+    const match = findMatchingTick(ticks, k);
+    if (match) {
+      onChange({ mode: "concentrated", tickAddress: match.address });
+    } else {
+      onChange({ mode: "concentrated", kRaw: kToQ6464Raw(k) });
+    }
+  }
+
+  // Handle custom input
+  function handleCustomInput(v: string) {
+    if (!/^[0-9]*\.?[0-9]*$/.test(v)) return;
+    setKInput(v);
+    setActivePreset("custom");
+
+    const k = parseFloat(v);
+    if (!v || isNaN(k)) {
+      onChange({ mode: "concentrated", kRaw: undefined });
+      return;
+    }
+
+    const match = findMatchingTick(ticks, k);
+    if (match) {
+      onChange({ mode: "concentrated", tickAddress: match.address });
+    } else {
+      const raw = kToQ6464Raw(k);
+      onChange({ mode: "concentrated", kRaw: raw });
+    }
   }
 
   const interiorTicks = ticks.filter((t) => t.status === "Interior");
@@ -85,7 +199,10 @@ export function TickSelector({
       <div className="flex gap-2">
         <button
           type="button"
-          onClick={() => onChange({ mode: "full-range" })}
+          onClick={() => {
+            setActivePreset(null);
+            onChange({ mode: "full-range" });
+          }}
           className={`flex-1 cursor-pointer rounded-lg px-3 py-2.5 text-xs font-medium transition-all ${
             selection.mode === "full-range"
               ? "bg-brand-primary/20 text-brand-primary ring-1 ring-brand-primary/40"
@@ -116,166 +233,186 @@ export function TickSelector({
       {/* Concentrated mode details */}
       {selection.mode === "concentrated" && (
         <div className="space-y-3">
-          {/* Existing ticks list */}
-          {ticksLoading ? (
-            <div className="rounded-lg bg-surface-2 p-3 text-center text-xs text-text-tertiary">
-              Loading ticks...
+          {/* k range info */}
+          <div className="flex items-center justify-between rounded-lg bg-surface-2 px-3 py-2 text-[10px]">
+            <span className="text-text-tertiary">
+              k range: <span className="font-mono text-text-secondary">{fmt(kMin)}</span>
+              {" — "}
+              <span className="font-mono text-text-secondary">{fmt(kMax)}</span>
+            </span>
+            <span className="text-text-tertiary">
+              {interiorTicks.length} tick{interiorTicks.length !== 1 ? "s" : ""} active
+            </span>
+          </div>
+
+          {/* Concentration presets */}
+          <div>
+            <div className="mb-1.5 text-[11px] font-medium text-text-secondary">
+              Concentration Level
             </div>
-          ) : interiorTicks.length > 0 ? (
-            <div className="space-y-1.5">
-              <div className="text-[11px] font-medium text-text-secondary">
-                Select existing tick
-              </div>
-              <div className="max-h-[160px] space-y-1.5 overflow-y-auto pr-1">
-                {interiorTicks.map((tick) => (
-                  <button
-                    key={tick.address}
-                    type="button"
-                    onClick={() =>
-                      onChange({
-                        mode: "concentrated",
-                        tickAddress: tick.address,
-                      })
-                    }
-                    className={`w-full cursor-pointer rounded-lg p-2.5 text-left transition-all ${
-                      selection.tickAddress === tick.address
-                        ? "bg-accent-blue/15 ring-1 ring-accent-blue/40"
-                        : "bg-surface-2 hover:bg-surface-3"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-xs text-text-primary">
-                          k = {fmt(tick.kDisplay)}
+            <div className="grid grid-cols-3 gap-2">
+              {(Object.entries(PRESETS) as [Exclude<PresetLevel, "custom">, PresetConfig][]).map(
+                ([level, config]) => {
+                  const isActive =
+                    activePreset === level && selection.mode === "concentrated";
+                  const previewK = presetToK(config.kPercent);
+                  const preview = computeTickPreview(previewK, radius, n);
+                  const hasExisting = findMatchingTick(ticks, previewK);
+
+                  return (
+                    <button
+                      key={level}
+                      type="button"
+                      onClick={() => handlePresetSelect(level)}
+                      className={`cursor-pointer rounded-lg p-2.5 text-left transition-all ${
+                        isActive
+                          ? config.activeColor
+                          : "bg-surface-2 hover:bg-surface-3 text-text-secondary"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold">
+                          {config.label}
                         </span>
-                        <Badge
-                          variant={
-                            tick.status === "Interior" ? "success" : "warning"
-                          }
-                        >
-                          {tick.status}
-                        </Badge>
+                        {hasExisting && (
+                          <Badge variant="success" className="text-[8px]">
+                            exists
+                          </Badge>
+                        )}
                       </div>
-                      <span className="text-[10px] text-text-tertiary">
-                        {fmt(tick.capitalEfficiency)}× eff.
-                      </span>
-                    </div>
-                    <div className="mt-1 flex gap-3 text-[10px] text-text-tertiary">
-                      <span>
-                        Range: {fmt(tick.xMin)} – {fmt(tick.xMax)}
-                      </span>
-                      <span>Depeg: {fmt(tick.depegPrice)}</span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : null}
-
-          {/* Divider */}
-          {interiorTicks.length > 0 && (
-            <div className="flex items-center gap-2">
-              <div className="h-px flex-1 bg-border-default" />
-              <span className="text-[10px] text-text-tertiary">or</span>
-              <div className="h-px flex-1 bg-border-default" />
-            </div>
-          )}
-
-          {/* New tick creation */}
-          <div className="space-y-2">
-            <div className="text-[11px] font-medium text-text-secondary">
-              Create new tick
-            </div>
-            <div className="rounded-lg bg-surface-2 p-3">
-              <div className="flex items-center gap-2">
-                <label className="text-xs text-text-secondary">k =</label>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  placeholder={fmt(radius * (Math.sqrt(n) - 1) * 1.1)}
-                  value={kInput}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    if (/^[0-9]*\.?[0-9]*$/.test(v)) {
-                      setKInput(v);
-                      // Compute kRaw from the current input value directly
-                      // (not from stale memo which lags by one render)
-                      const freshKRaw = computeKRaw(v);
-                      if (freshKRaw) {
-                        onChange({
-                          mode: "concentrated",
-                          kRaw: freshKRaw,
-                        });
-                      } else {
-                        // Clear stale kRaw when input is empty or invalid,
-                        // preventing accidental tick creation with previous value.
-                        onChange({ mode: "concentrated", kRaw: undefined });
-                      }
-                    }
-                  }}
-                  className="min-w-0 flex-1 bg-transparent font-mono text-sm text-text-primary outline-none placeholder:text-text-tertiary/40"
-                />
-              </div>
-
-              {/* Preview */}
-              {kPreview && (
-                <div className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-1 border-t border-border-default pt-2.5 text-[10px]">
-                  <div className="flex justify-between">
-                    <span className="text-text-tertiary">x_min</span>
-                    <span className="font-mono text-text-secondary">
-                      {fmt(kPreview.xMin)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-text-tertiary">x_max</span>
-                    <span className="font-mono text-text-secondary">
-                      {fmt(kPreview.xMax)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-text-tertiary">Depeg price</span>
-                    <span className="font-mono text-text-secondary">
-                      {fmt(kPreview.depegPrice)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-text-tertiary">Efficiency</span>
-                    <span className="font-mono text-accent-blue">
-                      {fmt(kPreview.capitalEfficiency)}×
-                    </span>
-                  </div>
-                  {/* k position bar */}
-                  <div className="col-span-2 mt-1">
-                    <div className="mb-0.5 flex justify-between text-[9px] text-text-tertiary">
-                      <span>k_min ({fmt(kPreview.kMin)})</span>
-                      <span>k_max ({fmt(kPreview.kMax)})</span>
-                    </div>
-                    <div className="h-1.5 rounded-full bg-surface-3">
-                      <div
-                        className="h-1.5 rounded-full bg-accent-blue transition-all"
-                        style={{
-                          width: `${Math.max(0, Math.min(100, kPreview.kPercent))}%`,
-                        }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Invalid k warning */}
-              {kInput && !kPreview && (
-                <p className="mt-2 text-[10px] text-error">
-                  k must be between k_min and k_max for this pool
-                </p>
+                      <div className="mt-0.5 text-[9px] opacity-70">
+                        {config.description}
+                      </div>
+                      {preview && (
+                        <div className="mt-1.5 space-y-0.5 text-[9px] opacity-80">
+                          <div className="flex justify-between">
+                            <span>Efficiency</span>
+                            <span className="font-mono font-semibold">
+                              {fmt(preview.capitalEfficiency)}×
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Depeg</span>
+                            <span className="font-mono">
+                              {fmtDepeg(preview.depegPrice)}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </button>
+                  );
+                },
               )}
             </div>
           </div>
 
+          {/* Custom divider */}
+          <div className="flex items-center gap-2">
+            <div className="h-px flex-1 bg-border-default" />
+            <span className="text-[10px] text-text-tertiary">or custom</span>
+            <div className="h-px flex-1 bg-border-default" />
+          </div>
+
+          {/* Custom k input */}
+          <div className="rounded-lg bg-surface-2 p-3">
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-text-secondary whitespace-nowrap">
+                k =
+              </label>
+              <input
+                type="text"
+                inputMode="decimal"
+                placeholder={`${fmt(kMin)} – ${fmt(kMax)}`}
+                value={kInput}
+                onFocus={() => setActivePreset("custom")}
+                onChange={(e) => handleCustomInput(e.target.value)}
+                className="min-w-0 flex-1 bg-transparent font-mono text-sm text-text-primary outline-none placeholder:text-text-tertiary/40"
+              />
+            </div>
+
+            {/* k position bar */}
+            {kPreview && (
+              <div className="mt-2.5">
+                <div className="mb-0.5 flex justify-between text-[9px] text-text-tertiary">
+                  <span>k_min ({fmt(kPreview.kMin)})</span>
+                  <span>k_max ({fmt(kPreview.kMax)})</span>
+                </div>
+                <div className="relative h-2 rounded-full bg-surface-3">
+                  {/* Preset markers */}
+                  {Object.values(PRESETS).map((p, i) => (
+                    <div
+                      key={i}
+                      className="absolute top-0 h-2 w-0.5 bg-text-tertiary/30"
+                      style={{ left: `${p.kPercent * 100}%` }}
+                    />
+                  ))}
+                  <div
+                    className="h-2 rounded-full bg-accent-blue transition-all"
+                    style={{
+                      width: `${Math.max(0, Math.min(100, kPreview.kPercent))}%`,
+                    }}
+                  />
+                </div>
+                <div className="mt-0.5 flex justify-between text-[8px] text-text-tertiary/50">
+                  <span>Narrow (concentrated)</span>
+                  <span>Wide (full range)</span>
+                </div>
+              </div>
+            )}
+
+            {/* Invalid k warning */}
+            {kInput && !kPreview && activePreset === "custom" && (
+              <p className="mt-2 text-[10px] text-error">
+                k must be between {fmt(kMin)} and {fmt(kMax)}
+              </p>
+            )}
+          </div>
+
+          {/* Tick preview details */}
+          {kPreview && (
+            <div className="rounded-lg border border-border-subtle bg-surface-1/50 p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-[11px] font-medium text-text-secondary">
+                  Tick Preview
+                </span>
+                <span className="font-mono text-[10px] text-text-tertiary">
+                  k = {fmt(kPreview.k)}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[10px]">
+                <div className="flex justify-between">
+                  <span className="text-text-tertiary">Reserve range</span>
+                  <span className="font-mono text-text-secondary">
+                    {fmt(kPreview.xMin)} – {fmt(kPreview.xMax)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-text-tertiary">Capital Efficiency</span>
+                  <span className="font-mono text-accent-blue font-semibold">
+                    {fmt(kPreview.capitalEfficiency)}×
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-text-tertiary">Depeg trigger</span>
+                  <span className="font-mono text-text-secondary">
+                    {fmtDepeg(kPreview.depegPrice)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-text-tertiary">Sphere radius</span>
+                  <span className="font-mono text-text-secondary">
+                    {fmt(kPreview.boundarySphereRadius)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Info banner */}
           <div className="rounded-lg bg-accent-blue/8 px-3 py-2 text-[10px] text-accent-blue/80">
-            Concentrated liquidity earns more fees when the pool trades near
-            your tick's range, but earns nothing when trading outside it.
-            Narrower range = higher efficiency = higher risk.
+            Higher concentration = more fee earnings near peg, but earns nothing
+            when the pool trades outside your range. The depeg trigger shows when
+            this tick deactivates.
           </div>
         </div>
       )}
