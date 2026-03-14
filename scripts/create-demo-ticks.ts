@@ -57,15 +57,22 @@ const CONFIG_PATH = path.join(SCRIPT_DIR, "devnet-config.json");
 const Q64 = BigInt(1) << BigInt(64);
 
 // Demo tick positions: fraction of k_range from k_min to k_max
-// Lower fraction → closer to k_min → wider cap → lower efficiency
-// Higher fraction → closer to k_max → narrower cap → higher efficiency
-const DEMO_TICK_FRACTIONS = [0.15, 0.30, 0.50, 0.70, 0.90];
+// For stablecoins, concentrate near k_min where efficiency is highest.
+// Stablecoins rarely deviate below $0.87, so tight ticks are safe.
+//
+// Fractions and their approximate properties (r ≈ 118M, n = 3):
+//   0.001 → 18×  efficiency, depeg $0.94 (Max preset)
+//   0.002 → 13×  efficiency, depeg $0.92 (Optimal preset)
+//   0.005 → 8×   efficiency, depeg $0.87 (Safe preset)
+//   0.01  → 5.8× efficiency, depeg $0.82 (Conservative)
+//   0.03  → 3.5× efficiency, depeg $0.69 (Wide fallback)
+const DEMO_TICK_FRACTIONS = [0.001, 0.002, 0.005, 0.01, 0.03];
 const DEMO_TICK_LABELS = [
-  "Wide (low concentration)",
-  "Moderate-wide",
-  "Balanced (medium concentration)",
-  "Moderate-narrow",
-  "Narrow (high concentration)",
+  "Max efficiency (18×)",
+  "Optimal for stablecoins (13×)",
+  "Safe — covers SVB-level depegs (8×)",
+  "Conservative (5.8×)",
+  "Wide fallback (3.5×)",
 ];
 
 // Per-tick liquidity deposit: $2M per asset (total $6M per tick, $30M across 5 ticks)

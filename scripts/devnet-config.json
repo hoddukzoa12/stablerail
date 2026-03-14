@@ -24,37 +24,37 @@
     "maxTradeAmount": "50000000000000",
     "maxDailyVolume": "500000000000000"
   },
-  "generatedAt": "2026-03-14T12:50:53.774Z",
+  "generatedAt": "2026-03-14T13:57:08.958Z",
   "ticks": [
     {
-      "index": 0,
-      "address": "yggjUiuZ8Mo8YmqHQFJDtS7ygdisTxbnHVzDVoT4kPo",
-      "kRaw": "1735977712932795084391402662",
-      "label": "Wide (low concentration)"
+      "index": 5,
+      "address": "BWCVo48xivboeUnM5uN9FHmNwg9cSu4jojbeEx4x9XXY",
+      "kRaw": "1598549469570568770637876390",
+      "label": "Max efficiency (18×)"
     },
     {
-      "index": 1,
-      "address": "FvPLBhgzGgmuRBnMwf9CTHXyBRFGArWKAT1TjiLdRfod",
-      "kRaw": "1874328293498794729147550886",
-      "label": "Moderate-wide"
+      "index": 6,
+      "address": "13bQDSHhoT6p5KDCdmmDbbMyn9kD2mxA88e16A74bJSe",
+      "kRaw": "1599471806774342101640498342",
+      "label": "Optimal for stablecoins (13×)"
     },
     {
-      "index": 2,
-      "address": "Edud4zGMLsZ6r6w6j9d5k3biod4zdbYLxdXdfudNCQMj",
-      "kRaw": "2058795734253460956515486886",
-      "label": "Balanced (medium concentration)"
+      "index": 7,
+      "address": "9mVzMRJs8zxxaKm7z99Ecdy4RFvXcRzEPk5zBPBxcfWr",
+      "kRaw": "1602238818385662094782581926",
+      "label": "Safe — covers SVB-level depegs (8×)"
     },
     {
-      "index": 3,
-      "address": "DZtg1sGFtTYE8yvNn4B7rUjdhJnwFcWfroeDLPhyzTs6",
-      "kRaw": "2243263175008127080804207782",
-      "label": "Moderate-narrow"
+      "index": 8,
+      "address": "AyMyNq4vdDk1jq2QfpBGqLoCgQBwKvBrH8VXCuURfW1Q",
+      "kRaw": "1606850504404528749929909414",
+      "label": "Conservative (5.8×)"
     },
     {
-      "index": 4,
-      "address": "F22ZLJ1SwWuo1vsbaV3vZoL8oEKzXs3VYKueokgqrVoP",
-      "kRaw": "2427730615762793342531882150",
-      "label": "Narrow (high concentration)"
+      "index": 9,
+      "address": "GbAeZEAMVjzAKUdRdcHzEC3PYLt891mU5KzqstkKUpeM",
+      "kRaw": "1625297248479995369445477542",
+      "label": "Wide fallback (3.5×)"
     }
   ]
 }
