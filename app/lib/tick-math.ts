@@ -74,11 +74,17 @@ export function computeXMax(
 /**
  * Compute depeg price at maximum reserve imbalance.
  *
- * At x_max, one asset is at its maximum. The marginal price of
- * that asset vs others: price = (r - x_other) / (r - x_max).
+ * At x_max, one asset is at its maximum (abundant / depegged).
+ * The depeg price is the VALUE of the depegged asset in terms of others:
+ *   p_depeg = (r - x_max) / (r - x_other)
+ *
+ * This mirrors the on-chain formula (tick.rs `compute_depeg_price_from_parts`):
+ *   p_depeg = (r - x_depeg) / (r - x_other)
+ *
+ * Result is < 1 (e.g., 0.95 means the stablecoin is worth $0.95).
+ *
  * Since all other (n-1) assets are symmetric at the boundary:
  *   x_other = (k·√n - x_max) / (n-1)    (from alpha constraint)
- *   depeg_price = (r - x_other) / (r - x_max)
  */
 export function computeDepegPrice(
   k: number,
@@ -90,9 +96,9 @@ export function computeDepegPrice(
   // Other assets: from alpha = k, sum of all reserves = k * sqrtN
   // x_other = (k * sqrtN - x_max) / (n - 1)
   const xOther = (k * sqrtN - xMax) / (n - 1);
-  const denominator = radius - xMax;
-  if (denominator <= 0) return Infinity;
-  return (radius - xOther) / denominator;
+  const denominator = radius - xOther;
+  if (denominator <= 0) return 0;
+  return (radius - xMax) / denominator;
 }
 
 /**

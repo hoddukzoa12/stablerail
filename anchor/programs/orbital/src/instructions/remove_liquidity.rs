@@ -106,23 +106,26 @@ pub fn handler<'info>(
         // Validate tick matches position and pool
         require!(
             *tick_acc.key == ctx.accounts.position.tick,
-            OrbitalError::InvalidVaultAddress
+            OrbitalError::TickPoolMismatch
         );
-        require!(tick.pool == pool.key(), OrbitalError::InvalidVaultAddress);
+        require!(tick.pool == pool.key(), OrbitalError::TickPoolMismatch);
 
         if tick.status == TickStatus::Boundary {
             // Boundary tick: liquidity is NOT part of pool.total_interior_liquidity.
             // flip_tick already subtracted this tick's reserves from pool.reserves
             // and moved liquidity to total_boundary_liquidity.
             // We must subtract from total_boundary_liquidity instead.
-            let liq_sub = if remove_amount.raw > tick.liquidity.raw {
-                tick.liquidity
-            } else {
-                remove_amount
-            };
+            // Hard-fail if position requests more liquidity than the tick holds.
+            // This invariant (remove_amount <= tick.liquidity) should always hold
+            // because tick.liquidity is the sum of all positions on this tick.
+            // A violation indicates upstream accounting corruption.
+            require!(
+                remove_amount.raw <= tick.liquidity.raw,
+                OrbitalError::InsufficientPositionBalance
+            );
             pool.total_boundary_liquidity = pool
                 .total_boundary_liquidity
-                .checked_sub(liq_sub)?;
+                .checked_sub(remove_amount)?;
 
             // For boundary ticks, return amounts are computed from tick's own
             // reserves (which were snapshotted at crossing time), not pool reserves.
@@ -132,7 +135,7 @@ pub fn handler<'info>(
                 FixedPoint::zero()
             };
 
-            tick.liquidity = tick.liquidity.checked_sub(liq_sub)?;
+            tick.liquidity = tick.liquidity.checked_sub(remove_amount)?;
 
             // Compute return amounts from tick reserves.
             // Reserve accounting uses the floor-rounded u64 amount (what actually
@@ -234,12 +237,13 @@ pub fn handler<'info>(
             };
             tick.reserves[i] = tick.reserves[i].checked_sub(sub)?;
         }
-        let liq_sub = if remove_amount.raw > tick.liquidity.raw {
-            tick.liquidity
-        } else {
-            remove_amount
-        };
-        tick.liquidity = tick.liquidity.checked_sub(liq_sub)?;
+        // Hard-fail if position requests more liquidity than the tick holds.
+        // Same invariant as the Boundary path above.
+        require!(
+            remove_amount.raw <= tick.liquidity.raw,
+            OrbitalError::InsufficientPositionBalance
+        );
+        tick.liquidity = tick.liquidity.checked_sub(remove_amount)?;
 
         save_tick_state(tick_acc, &tick)?;
 

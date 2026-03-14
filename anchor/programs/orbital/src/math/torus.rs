@@ -168,8 +168,8 @@ pub struct ConsolidatedTickData {
     /// Nearest Interior tick k below current alpha (alpha decreasing direction)
     /// When alpha decreases past this k, that tick transitions Interior → Boundary
     pub nearest_k_lower: Option<FixedPoint>,
-    /// Nearest Interior tick k above current alpha (alpha increasing direction)
-    /// When alpha increases past this k, the nearest Boundary tick transitions
+    /// Nearest Boundary tick k above current alpha (alpha increasing direction)
+    /// When alpha increases past this k, that Boundary tick transitions
     /// Boundary → Interior
     pub nearest_k_upper: Option<FixedPoint>,
 }
@@ -177,8 +177,8 @@ pub struct ConsolidatedTickData {
 /// Find the nearest tick boundaries relative to the current alpha.
 ///
 /// Scans all ticks and finds:
-///   - nearest_k_lower: largest Interior tick k that is ≤ current alpha
-///   - nearest_k_upper: smallest Boundary tick k that is > current alpha
+///   - nearest_k_lower: largest Interior tick k that is < current alpha (strict)
+///   - nearest_k_upper: smallest Boundary tick k that is > current alpha (strict)
 ///
 /// This maps to the reference implementation's `_getConsolidatedTickData()`.
 pub fn find_nearest_tick_boundaries(
@@ -192,8 +192,10 @@ pub fn find_nearest_tick_boundaries(
     for &(k, status) in ticks {
         match status {
             TickStatus::Interior => {
-                // Interior ticks below alpha: potential crossing on alpha decrease
-                if k.raw <= current_alpha.raw {
+                // Interior ticks strictly below alpha: potential crossing on alpha decrease.
+                // Strict inequality prevents spurious crossings when alpha == k,
+                // and mirrors the strict `>` used for Boundary ticks above.
+                if k.raw < current_alpha.raw {
                     match nearest_k_lower {
                         None => nearest_k_lower = Some(k),
                         Some(prev) if k.raw > prev.raw => nearest_k_lower = Some(k),
@@ -282,8 +284,11 @@ pub fn compute_delta_to_boundary(
         FixedPoint::from_int(4).checked_mul(c_coeff)?,
     )?;
 
-    // If discriminant < 0, boundary is unreachable (shouldn't happen with valid ticks)
+    // If discriminant < 0, boundary is geometrically unreachable from the
+    // current sphere state. This can occur if the sphere radius changed
+    // (e.g., after liquidity additions) since the tick was created.
     if discriminant.raw < 0 {
+        msg!("compute_delta_to_boundary: negative discriminant ({}) for k_cross={}, boundary unreachable", discriminant.raw, k_cross.raw);
         return Ok(FixedPoint::zero());
     }
 
@@ -305,7 +310,11 @@ pub fn compute_delta_to_boundary(
         }
         (true, false) => root1,
         (false, true) => root2,
-        (false, false) => FixedPoint::zero(), // No positive root — already past boundary
+        (false, false) => {
+            // No positive root — already past boundary or boundary unreachable
+            msg!("compute_delta_to_boundary: no positive root for k_cross={}, roots=({}, {})", k_cross.raw, root1.raw, root2.raw);
+            FixedPoint::zero()
+        }
     };
 
     Ok(result)

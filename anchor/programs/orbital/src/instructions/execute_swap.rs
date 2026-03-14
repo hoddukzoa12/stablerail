@@ -103,7 +103,10 @@ pub fn handler<'info>(
     let min_amount_out =
         FixedPoint::from_token_amount(params.min_amount_out, pool.token_decimals[token_out])?;
 
-    // ── Fee computation (applied once to entire trade) ──
+    // ── Fee computation ──
+    // Fee is computed here (for net_in used by the analytical solver) and again
+    // inside swap::execute_swap (for reserve accounting). Both produce identical
+    // values; the domain function is the authoritative fee application.
     let fee = swap::compute_fee(amount_in, pool.fee_rate_bps)?;
     let net_in = amount_in.checked_sub(fee)?;
 
@@ -242,6 +245,14 @@ pub fn handler<'info>(
             }
         }
 
+        // Guard: if the loop exhausted max_iterations with remaining input,
+        // something is wrong (e.g., delta stuck at zero). Fail rather than
+        // silently executing a partial swap that loses the user's funds.
+        require!(
+            remaining_in.is_zero(),
+            OrbitalError::TickCrossingFailed
+        );
+
         // Final invariant verification after segmented trade
         recompute_sphere(pool)?;
         verify_invariant(pool)?;
@@ -351,6 +362,9 @@ fn load_tick_data(
     // causing flip_tick to miss the actual nearest boundary tick.
     let mut seen_keys = Vec::with_capacity(tick_accounts.len());
     for acc in tick_accounts {
+        // Tick accounts must be writable — flip_tick serializes updated state back.
+        // Check early to avoid confusing errors after pool reserves are already mutated.
+        require!(acc.is_writable, OrbitalError::InvalidTickAccount);
         require!(
             !seen_keys.contains(acc.key),
             OrbitalError::DuplicateTickAccount

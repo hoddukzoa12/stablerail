@@ -104,7 +104,10 @@ export function useCreateTick() {
 
       try {
         const sig = await send({ instructions: [instruction] });
-        return sig ? String(sig) : "";
+        // Return a truthy string so callers can distinguish success from failure
+        // via `if (!result)` checks. "confirmed" is used when the wallet adapter
+        // returns a falsy signature (e.g., some adapters return undefined on success).
+        return sig ? String(sig) : "confirmed";
       } catch (err) {
         const e = err instanceof Error ? err : new Error(String(err));
         setError(e);
