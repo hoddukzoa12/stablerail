@@ -286,7 +286,7 @@ export function TickSelector({
                       {preview && (
                         <div className="mt-1.5 space-y-0.5 text-[9px] opacity-80">
                           <div className="flex justify-between">
-                            <span>Efficiency</span>
+                            <span>Concentration</span>
                             <span className="font-mono font-semibold">
                               {fmt(preview.capitalEfficiency)}×
                             </span>
@@ -387,7 +387,7 @@ export function TickSelector({
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-text-tertiary">Capital Efficiency</span>
+                  <span className="text-text-tertiary">Concentration</span>
                   <span className="font-mono text-accent-blue font-semibold">
                     {fmt(kPreview.capitalEfficiency)}×
                   </span>
@@ -410,9 +410,10 @@ export function TickSelector({
 
           {/* Info banner */}
           <div className="rounded-lg bg-accent-blue/8 px-3 py-2 text-[10px] text-accent-blue/80">
-            Higher concentration = more fee earnings near peg, but earns nothing
-            when the pool trades outside your range. The depeg trigger shows when
-            this tick deactivates.
+            Concentration shows how narrowly your liquidity is focused. Higher
+            concentration = more fee earnings near peg, but earns nothing when
+            the pool trades outside your range. Note: concentration does not
+            amplify trading depth in the current version.
           </div>
         </div>
       )}
