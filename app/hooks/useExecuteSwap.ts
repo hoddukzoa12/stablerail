@@ -29,7 +29,7 @@
 import { useState, useCallback } from "react";
 import { useWalletConnection, useSendTransaction } from "@solana/react-hooks";
 import { type Address } from "@solana/kit";
-import { PROGRAM_ID, POOL_PDA } from "../lib/devnet-config";
+import { PROGRAM_ID, POOL_PDA, TICK_ADDRESSES } from "../lib/devnet-config";
 import { TOKEN_PROGRAM_ID } from "../lib/ata-utils";
 
 /** execute_swap instruction discriminator */
@@ -103,11 +103,17 @@ export function useExecuteSwap() {
           { address: userAddress, role: 3 as const },          // user: WritableSigner
           { address: POOL_PDA as Address, role: 1 as const },  // pool: Writable
           { address: TOKEN_PROGRAM_ID, role: 0 as const },     // token_program: Readonly
-          // Remaining accounts (vault_in, vault_out, user_ata_in, user_ata_out)
+          // Remaining accounts (vault_in, vault_out, user_ata_in, user_ata_out, ...ticks)
           { address: params.vaultIn as Address, role: 1 as const },
           { address: params.vaultOut as Address, role: 1 as const },
           { address: params.userAtaIn as Address, role: 1 as const },
           { address: params.userAtaOut as Address, role: 1 as const },
+          // All tick accounts must be provided (writable) when pool has ticks.
+          // On-chain guard: tick_accounts.len() == pool.tick_count
+          ...TICK_ADDRESSES.map((addr) => ({
+            address: addr as Address,
+            role: 1 as const,
+          })),
         ],
         data,
       };

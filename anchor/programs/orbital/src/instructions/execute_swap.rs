@@ -210,7 +210,7 @@ pub fn handler<'info>(
                         n,
                     )?;
 
-                    if delta.raw <= 0 || delta.raw >= remaining_in.raw {
+                    if delta.raw <= 0 || delta.raw > remaining_in.raw {
                         // Can't reach boundary or delta exceeds remaining → full swap
                         apply_partial_swap(
                             pool, token_in, token_out, remaining_in, tentative_out,
@@ -229,8 +229,9 @@ pub fn handler<'info>(
                         apply_partial_swap(pool, token_in, token_out, delta, partial_out)?;
                         total_out = total_out.checked_add(partial_out)?;
 
-                        // Snapshot alpha at the crossing boundary BEFORE flip changes reserves.
-                        // pool.alpha_cache reflects post-partial-swap state = the boundary value.
+                        // Refresh alpha_cache to reflect post-partial-swap reserves,
+                        // then snapshot BEFORE flip_tick changes reserves again.
+                        update_caches(pool)?;
                         let alpha_at_boundary = pool.alpha_cache;
 
                         // Flip the crossed tick's status and redistribute reserves
