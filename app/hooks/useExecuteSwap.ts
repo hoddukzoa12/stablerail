@@ -52,6 +52,8 @@ export interface SwapExecuteParams {
   userAtaIn: string;
   /** User's ATA for the output token */
   userAtaOut: string;
+  /** Dynamic tick account addresses from usePoolTicks (falls back to static config) */
+  tickAddresses?: string[];
 }
 
 /**
@@ -110,7 +112,7 @@ export function useExecuteSwap() {
           { address: params.userAtaOut as Address, role: 1 as const },
           // All tick accounts must be provided (writable) when pool has ticks.
           // On-chain guard: tick_accounts.len() == pool.tick_count
-          ...TICK_ADDRESSES.map((addr) => ({
+          ...(params.tickAddresses ?? TICK_ADDRESSES).map((addr) => ({
             address: addr as Address,
             role: 1 as const,
           })),

@@ -151,6 +151,7 @@ export function SwapCard() {
         vaultOut: tokenOut.vault,
         userAtaIn,
         userAtaOut,
+        tickAddresses: rawTicks.map((t) => t.address),
       });
 
       setTxResult(sig);

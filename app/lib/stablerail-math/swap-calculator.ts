@@ -345,6 +345,15 @@ export function computeSwapQuoteWithTicks(
     }
   }
 
+  // Post-loop guard: mirror on-chain require!(remaining_in.is_zero())
+  // See execute_swap.rs lines 253-259 (OrbitalError::TickCrossingFailed)
+  if (remainingIn.isPositive()) {
+    throw new Error(
+      'computeSwapQuoteWithTicks: tick crossing failed — could not consume all input ' +
+      `(${remainingIn.toNumber()} remaining after ${maxIterations} iterations)`,
+    );
+  }
+
   // ── 5. Floor round to token base units ──
   const outDecimals = poolState.tokenDecimals[tokenOutIndex];
   const amountOutU64 = totalOut.toTokenAmountFloor(outDecimals);
@@ -596,49 +605,32 @@ function flipTick(
 }
 
 /**
- * Recompute sphere radius from reserves: r = √(Σ(r-xᵢ)²) ... but we need r.
- * Since the sphere invariant is Σ(r-xᵢ)²=r², and we know the reserves moved,
- * we use the equal-price point formula: r = total_liquidity / n where
- * total_liquidity is approximated from the reserve geometry.
+ * Recompute sphere radius from reserves using exact quadratic solution.
+ * Matches on-chain compute_radius_from_reserves (pool.rs lines 69-99).
  *
- * Actually, for simulation purposes we recompute from the invariant:
- * Given the reserves satisfy the invariant, r doesn't change from a swap alone.
- * r only changes when liquidity is added/removed (flip_tick redistributes reserves
- * but the sphere gets recomputed on-chain via recompute_sphere).
- *
- * For the off-chain approximation, we compute:
- *   new_r = sqrt(sum_of_squares) where sum_of_squares = Σ(r_old - x_i)²
- *   But this equals r_old² by the invariant... unless reserves were redistributed.
- *
- * After flip_tick, pool.reserves changed, so we need to find a new r that satisfies
- * the invariant. On-chain this uses recompute_sphere which sets r from
- * total_interior_liquidity. For simplicity, we compute:
- *   r = Σ x_i / (n - √n)  (from equal_price_point inversion: q = r(1-1/√n))
- *
- * This is exact when reserves are balanced, and a good approximation near
- * equilibrium (which is always the case for stablecoin pools).
+ * From the sphere invariant Σ(r - xᵢ)² = r², expanding gives:
+ *   (n-1)r² - 2r·Σxᵢ + Σxᵢ² = 0
+ *   r = (Σxᵢ + √((Σxᵢ)² - (n-1)·Σxᵢ²)) / (n-1)
  * @internal
  */
 function recomputeRadius(reserves: Q6464[], n: number): Q6464 {
-  // Method: Use the fact that Σ(r-xᵢ)² = r² must hold.
-  // At equal reserves: x_i = q = r(1-1/√n), so Σx_i = n·r(1-1/√n)
-  // → r = Σx_i / (n - √n)
-  //
-  // For non-equal reserves this is approximate, but after flip_tick the
-  // reserves are close to equilibrium (stablecoin pool near peg).
-  // The on-chain recompute_sphere uses total_interior_liquidity which
-  // maps to the same algebra.
-  let sum = Q6464.zero();
+  const nMinus1 = Q6464.fromInt(BigInt(n - 1));
+
+  let sumX = Q6464.zero();
+  let sumXSq = Q6464.zero();
   for (let i = 0; i < n; i++) {
-    sum = sum.add(reserves[i]);
+    sumX = sumX.add(reserves[i]);
+    sumXSq = sumXSq.add(reserves[i].squared());
   }
-  const nFp = Q6464.fromInt(BigInt(n));
-  const sqrtN = nFp.sqrt();
-  const denominator = nFp.sub(sqrtN); // n - √n
-  if (denominator.raw <= 0n) {
-    return sum; // degenerate, shouldn't happen for n >= 2
+
+  // discriminant = (Σxᵢ)² - (n-1)·Σxᵢ²
+  const discriminant = sumX.squared().sub(nMinus1.mul(sumXSq));
+
+  if (discriminant.raw < 0n) {
+    throw new Error('recomputeRadius: negative discriminant — reserves violate sphere invariant');
   }
-  return sum.div(denominator);
+
+  return sumX.add(discriminant.sqrt()).div(nMinus1);
 }
 
 // ══════════════════════════════════════════════════════════════
