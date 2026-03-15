@@ -29,7 +29,7 @@
 import { useState, useCallback } from "react";
 import { useWalletConnection, useSendTransaction } from "@solana/react-hooks";
 import { type Address } from "@solana/kit";
-import { PROGRAM_ID, POOL_PDA, TICK_ADDRESSES } from "../lib/devnet-config";
+import { PROGRAM_ID, POOL_PDA } from "../lib/devnet-config";
 import { TOKEN_PROGRAM_ID } from "../lib/ata-utils";
 
 /** execute_swap instruction discriminator */
@@ -52,8 +52,8 @@ export interface SwapExecuteParams {
   userAtaIn: string;
   /** User's ATA for the output token */
   userAtaOut: string;
-  /** Dynamic tick account addresses from usePoolTicks (falls back to static config) */
-  tickAddresses?: string[];
+  /** Tick account addresses from usePoolTicks (required for pools with ticks) */
+  tickAddresses: string[];
 }
 
 /**
@@ -112,7 +112,7 @@ export function useExecuteSwap() {
           { address: params.userAtaOut as Address, role: 1 as const },
           // All tick accounts must be provided (writable) when pool has ticks.
           // On-chain guard: tick_accounts.len() == pool.tick_count
-          ...(params.tickAddresses ?? TICK_ADDRESSES).map((addr) => ({
+          ...params.tickAddresses.map((addr) => ({
             address: addr as Address,
             role: 1 as const,
           })),

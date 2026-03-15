@@ -207,6 +207,10 @@ pub fn handler<'info>(
     let deposit_fp = FixedPoint::from_token_amount(params.initial_deposit_per_asset, pool_decimals)?;
     initialize_pool_reserves(pool, deposit_fp, &params.token_mints[..n], &vault_pubkeys[..n])?;
 
+    // Record seed liquidity so close_pool can distinguish it from LP deposits.
+    // After initialize_pool_reserves, total_interior_liquidity == seed amount.
+    pool.seed_liquidity = pool.total_interior_liquidity;
+
     // ── Emit event ──
     emit!(PoolCreated {
         pool: pool.key(),

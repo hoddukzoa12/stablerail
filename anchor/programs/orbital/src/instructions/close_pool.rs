@@ -41,18 +41,18 @@ pub fn handler<'info>(
         OrbitalError::Unauthorized
     );
 
-    // Guard 2: reject close if any LP positions have outstanding liquidity
-    // beyond the initial seed deposit. The seed deposit (from initialize_pool)
-    // has no Position PDA, so total_interior_liquidity can never reach exactly
-    // zero (tracked in issue #47). However, if LP positions were added on top,
-    // total_interior_liquidity will exceed the seed amount. We check that no
-    // tick-based concentrated positions exist (tick_count == 0 or all ticks
-    // have zero liquidity implies LPs have withdrawn).
+    // Guard 2: reject close if any LP positions have outstanding liquidity.
     //
-    // NOTE: This is a best-effort guard for the hackathon. A production
-    // implementation should track active_position_count separately.
+    // - Boundary liquidity must be zero (no concentrated tick positions active)
+    // - Interior liquidity must equal seed liquidity (no full-range LP deposits
+    //   remain beyond the initial seed from initialize_pool, which has no
+    //   Position PDA and no burn path — see issue #47)
     require!(
         pool.total_boundary_liquidity.is_zero(),
+        OrbitalError::PoolNotEmpty
+    );
+    require!(
+        pool.total_interior_liquidity.raw <= pool.seed_liquidity.raw,
         OrbitalError::PoolNotEmpty
     );
 
