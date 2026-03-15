@@ -7,6 +7,7 @@ import { TxNotification } from "../ui/tx-notification";
 import { TOKENS } from "../../lib/tokens";
 import { PROGRAM_ID, POOL_PDA } from "../../lib/devnet-config";
 import { q6464ToNumber, formatBalance } from "../../lib/format-utils";
+import { isKValid } from "../../lib/tick-math";
 import { useAddLiquidity } from "../../hooks/useAddLiquidity";
 import { useCreateTick } from "../../hooks/useCreateTick";
 import { usePoolTicks } from "../../hooks/usePoolTicks";
@@ -219,11 +220,15 @@ export function AddLiquidityForm({
 
   const isSubmitting = isSending || isCreatingTick;
 
-  // Validate concentrated mode has a valid selection
+  // Validate concentrated mode has a valid selection.
+  // For custom k, also verify it falls within [k_min, k_max] to prevent
+  // on-chain InvalidTickBound errors (see create_tick instruction).
+  const radius = q6464ToNumber(pool.radius.raw);
   const concentratedValid =
     tickSelection.mode === "full-range" ||
     tickSelection.tickAddress !== undefined ||
-    tickSelection.kRaw !== undefined;
+    (tickSelection.kRaw !== undefined &&
+      isKValid(q6464ToNumber(tickSelection.kRaw), radius, pool.nAssets));
 
   return (
     <div>
