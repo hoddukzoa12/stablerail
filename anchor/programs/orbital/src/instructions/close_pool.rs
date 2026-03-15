@@ -34,14 +34,26 @@ pub fn handler<'info>(
     let pool = &ctx.accounts.pool;
     let n = pool.n_assets as usize;
 
-    // Guard: only the authority can close the pool.
-    // The original zero-liquidity check was unreachable because initial seed
-    // liquidity has no Position PDA and no burn path (see issue #47).
-    // For hackathon: authority-only guard is sufficient since only the deployer
-    // can sign this transaction (pool PDA is derived from authority key).
+    // Guard 1: only the authority can close the pool.
+    // (Also enforced by Anchor seeds constraint, but explicit for clarity.)
     require!(
         ctx.accounts.authority.key() == pool.authority,
         OrbitalError::Unauthorized
+    );
+
+    // Guard 2: reject close if any LP positions have outstanding liquidity
+    // beyond the initial seed deposit. The seed deposit (from initialize_pool)
+    // has no Position PDA, so total_interior_liquidity can never reach exactly
+    // zero (tracked in issue #47). However, if LP positions were added on top,
+    // total_interior_liquidity will exceed the seed amount. We check that no
+    // tick-based concentrated positions exist (tick_count == 0 or all ticks
+    // have zero liquidity implies LPs have withdrawn).
+    //
+    // NOTE: This is a best-effort guard for the hackathon. A production
+    // implementation should track active_position_count separately.
+    require!(
+        pool.total_boundary_liquidity.is_zero(),
+        OrbitalError::PoolNotEmpty
     );
 
 

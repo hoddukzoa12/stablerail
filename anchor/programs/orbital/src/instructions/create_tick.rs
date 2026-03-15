@@ -62,6 +62,16 @@ pub fn handler(ctx: Context<CreateTick>, params: CreateTickParams) -> Result<()>
         OrbitalError::Unauthorized
     );
 
+    // Cap tick count to prevent bricking swaps.
+    // Solana tx = 1232 bytes; each remaining_account = 32 bytes.
+    // execute_swap uses 4 fixed remaining_accounts (vaults + ATAs),
+    // leaving room for ~30 ticks. We cap at 16 for safety margin.
+    const MAX_TICKS: u16 = 16;
+    require!(
+        pool.tick_count < MAX_TICKS,
+        OrbitalError::MaxTicksReached
+    );
+
     // Convert raw k to FixedPoint and validate bounds via Tick::new
     let k = FixedPoint::from_raw(params.k_raw);
     let tick_math = Tick::new(k, &pool.sphere)?;

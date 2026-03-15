@@ -145,4 +145,7 @@ pub enum OrbitalError {
 
     #[msg("Duplicate tick account in remaining_accounts")]
     DuplicateTickAccount,
+
+    #[msg("Maximum tick count reached (16)")]
+    MaxTicksReached,
 }
