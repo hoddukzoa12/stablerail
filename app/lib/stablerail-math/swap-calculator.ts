@@ -326,19 +326,13 @@ export function computeSwapQuoteWithTicks(
         applyPartialSwap(simReserves, tokenInIndex, tokenOutIndex, delta, partialOut);
         totalOut = totalOut.add(partialOut);
 
-        // Flip the crossed tick and redistribute reserves
-        flipTick(simTicks, crossingK, simReserves, n, simTotalInteriorLiquidity);
+        // Flip the crossed tick and redistribute reserves.
+        // Use incremental sub/add to preserve full-range LP liquidity
+        // (matching on-chain flip_tick behavior in execute_swap.rs:490-509).
+        simTotalInteriorLiquidity = flipTick(simTicks, crossingK, simReserves, n, simTotalInteriorLiquidity);
 
         // Recompute radius after reserve redistribution
         simRadius = recomputeRadius(simReserves, n);
-
-        // Recompute total interior liquidity
-        simTotalInteriorLiquidity = Q6464.zero();
-        for (const t of simTicks) {
-          if (t.status === 'Interior') {
-            simTotalInteriorLiquidity = simTotalInteriorLiquidity.add(t.liquidity);
-          }
-        }
 
         remainingIn = remainingIn.sub(delta);
       }
@@ -568,7 +562,11 @@ function applyPartialSwap(
 
 /**
  * Flip a tick's status and redistribute reserves.
- * Mirrors execute_swap.rs `flip_tick`.
+ * Mirrors execute_swap.rs `flip_tick` (lines 458-525).
+ *
+ * Returns the updated totalInteriorLiquidity after the flip,
+ * using incremental sub/add (matching on-chain) instead of
+ * re-summing tick liquidity (which would lose full-range LP share).
  * @internal
  */
 function flipTick(
@@ -577,7 +575,7 @@ function flipTick(
   reserves: Q6464[],
   n: number,
   totalInteriorLiquidity: Q6464,
-): void {
+): Q6464 {
   for (const tick of ticks) {
     if (tick.k.raw !== kCross.raw) continue;
 
@@ -593,15 +591,17 @@ function flipTick(
         tick.reserves[i] = liveShare;
         reserves[i] = reserves[i].sub(liveShare);
       }
+      return totalInteriorLiquidity.sub(tick.liquidity);
     } else {
       // Boundary → Interior: add frozen reserves back to pool
       tick.status = 'Interior';
       for (let i = 0; i < n; i++) {
         reserves[i] = reserves[i].add(tick.reserves[i]);
       }
+      return totalInteriorLiquidity.add(tick.liquidity);
     }
-    return;
   }
+  return totalInteriorLiquidity;
 }
 
 /**
