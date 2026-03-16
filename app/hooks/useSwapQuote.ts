@@ -135,7 +135,12 @@ export function useSwapQuote(
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [pool, tokenInIndex, tokenOutIndex, amountIn, decimals, ticks]);
+    // Note: `ticks` is intentionally excluded from the dependency array.
+    // ticksRef.current always holds the latest value (updated on line 60),
+    // and including `ticks` here causes spurious debounce resets on every
+    // tick poll cycle since rawTicks gets a new array reference each time.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pool, tokenInIndex, tokenOutIndex, amountIn, decimals]);
 
   return { quote, error, isComputing };
 }

@@ -91,22 +91,29 @@ function fmtDepeg(n: number): string {
 }
 
 /**
- * Convert a floating k value to Q64.64 raw bigint.
+ * Convert a k value to Q64.64 raw bigint.
  *
- * Uses string-based fractional encoding to avoid `Number(1n << 64n)` which
- * overflows IEEE-754 double precision (2^64 > Number.MAX_SAFE_INTEGER).
- * Instead, we decompose the decimal fraction via string manipulation and
- * multiply by 2^64 in BigInt space for exact results.
+ * Accepts either a number or a string. When a string is provided (e.g. from
+ * user input), the decimal is decomposed directly in string space to avoid
+ * IEEE-754 rounding artifacts (e.g. `parseFloat("0.3")` → 0.29999...99944).
+ * This is critical for `findMatchingTick` which uses exact bigint equality —
+ * a 1-ULP difference in kRaw produces a different PDA.
+ *
+ * When a number is provided (e.g. from preset computations), falls back to
+ * `toFixed(18)` string conversion — acceptable for presets since those values
+ * are computed from exact integer math on the sphere radius.
  */
-function kToQ6464Raw(k: number): bigint {
+function kToQ6464Raw(k: number | string): bigint {
   const SCALE = 1n << 64n;
-  const negative = k < 0;
-  const abs = Math.abs(k);
 
-  // Use string decomposition to avoid float→BigInt precision loss
-  const str = abs.toFixed(18); // 18 decimal places for max precision
-  const [intStr, fracStr = "0"] = str.split(".");
-  const intPart = BigInt(intStr);
+  // Normalize to string, preserving user input precision when possible
+  const str = typeof k === "string" ? k : Math.abs(k).toFixed(18);
+  const negative = typeof k === "number" ? k < 0 : str.startsWith("-");
+  const absStr = negative && typeof k === "string" ? str.slice(1) : str;
+
+  // Decompose decimal string into integer + fractional parts
+  const [intStr, fracStr = "0"] = absStr.split(".");
+  const intPart = BigInt(intStr || "0");
 
   // fracScaled = fracStr * 2^64 / 10^fracLen — all in BigInt
   const fracLen = fracStr.length;
@@ -189,19 +196,19 @@ export function TickSelector({
     }
   }
 
-  // Handle custom input
+  // Handle custom input — pass string directly to kToQ6464Raw to avoid
+  // parseFloat precision loss (e.g. "0.3" → 0.29999...99944).
   function handleCustomInput(v: string) {
     if (!/^[0-9]*\.?[0-9]*$/.test(v)) return;
     setKInput(v);
     setActivePreset("custom");
 
-    const k = parseFloat(v);
-    if (!v || isNaN(k)) {
+    if (!v || v === "." || parseFloat(v) === 0) {
       onChange({ mode: "concentrated", kRaw: undefined });
       return;
     }
 
-    const raw = kToQ6464Raw(k);
+    const raw = kToQ6464Raw(v);
     const match = findMatchingTick(ticks, raw);
     if (match) {
       onChange({ mode: "concentrated", tickAddress: match.address });

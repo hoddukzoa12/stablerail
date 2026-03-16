@@ -46,12 +46,14 @@ export function QuoteDetails({
   // Fee in human-readable units (Q6464.toNumber() already returns the float)
   const feeStr = quote.feeAmount.toNumber().toFixed(6);
 
-  // Minimum received after slippage
-  const minReceived =
-    Number(quote.amountOutU64) * (1 - slippageBps / 10000);
-  const minReceivedStr = (minReceived / 10 ** tokenOut.decimals).toFixed(
-    tokenOut.decimals > 4 ? 4 : tokenOut.decimals,
-  );
+  // Minimum received after slippage — computed in BigInt to avoid
+  // precision loss for large amountOutU64 values (> Number.MAX_SAFE_INTEGER).
+  const slippageMultiplier = 10000n - BigInt(slippageBps);
+  const minReceivedBaseUnits =
+    (quote.amountOutU64 * slippageMultiplier) / 10000n;
+  const minReceivedStr = (
+    Number(minReceivedBaseUnits) / 10 ** tokenOut.decimals
+  ).toFixed(tokenOut.decimals > 4 ? 4 : tokenOut.decimals);
 
   return (
     <div className="rounded-xl border border-border-subtle bg-surface-1/50">

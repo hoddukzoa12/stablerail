@@ -374,6 +374,9 @@ pub fn handler<'info>(
 fn load_tick_state(acc: &AccountInfo) -> Result<TickState> {
     // Validate account is owned by this program (prevents forged tick accounts)
     require!(acc.owner == &crate::ID, OrbitalError::InvalidTickAccount);
+    // Tick account must be writable — save_tick_state will write updated state back.
+    // Check early for a clear error instead of an opaque AccountBorrowFailed at save time.
+    require!(acc.is_writable, OrbitalError::InvalidTickAccount);
 
     let data = acc.try_borrow_data()?;
     let mut slice: &[u8] = &data;

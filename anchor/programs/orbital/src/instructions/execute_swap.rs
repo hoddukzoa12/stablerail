@@ -516,8 +516,14 @@ fn flip_tick(
                 TickStatus::Boundary => {
                     // Boundary → Interior: add tick's frozen reserves back to pool.
                     // Boundary reserves are accurate (frozen at crossing time).
+                    // Guard: reject negative reserves that could silently subtract from pool
+                    // (should never happen in normal operation, but defends against accounting bugs).
                     tick.status = TickStatus::Interior;
                     for i in 0..n {
+                        require!(
+                            tick.reserves[i].raw >= 0,
+                            OrbitalError::TickSerializationFailed
+                        );
                         pool.reserves[i] = pool.reserves[i].checked_add(tick.reserves[i])?;
                     }
                     pool.total_boundary_liquidity = pool

@@ -104,7 +104,12 @@ pub fn handler<'info>(
         // Step 1: Transfer all tokens from vault to authority ATA
         let vault_data = vault_info.try_borrow_data()?;
         // SPL Token Account layout: [mint 32B][owner 32B][amount 8B]
-        let vault_balance = u64::from_le_bytes(vault_data[64..72].try_into().unwrap());
+        require!(vault_data.len() >= 72, OrbitalError::InvalidRemainingAccounts);
+        let vault_balance = u64::from_le_bytes(
+            vault_data[64..72]
+                .try_into()
+                .map_err(|_| error!(OrbitalError::InvalidRemainingAccounts))?,
+        );
         drop(vault_data);
 
         if vault_balance > 0 {
