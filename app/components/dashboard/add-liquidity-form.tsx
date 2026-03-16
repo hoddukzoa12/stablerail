@@ -9,6 +9,7 @@ import { TOKENS } from "../../lib/tokens";
 import { PROGRAM_ID, POOL_PDA } from "../../lib/devnet-config";
 import { q6464ToNumber, formatBalance } from "../../lib/format-utils";
 import { isKValid } from "../../lib/tick-math";
+import { parseTokenAmount } from "../../lib/stablerail-math";
 import { useAddLiquidity } from "../../hooks/useAddLiquidity";
 import { useCreateTick } from "../../hooks/useCreateTick";
 import { usePoolTicks } from "../../hooks/usePoolTicks";
@@ -135,10 +136,9 @@ export function AddLiquidityForm({
   const handleSubmit = useCallback(async () => {
     setTxResult(null);
 
-    const baseAmounts = tokens.map((token, i) => {
-      const val = parseFloat(amounts[i] || "0");
-      return BigInt(Math.floor(val * 10 ** token.decimals));
-    });
+    const baseAmounts = tokens.map((token, i) =>
+      parseTokenAmount(amounts[i] || "0", token.decimals),
+    );
 
     if (baseAmounts.some((a) => a === 0n)) return;
 

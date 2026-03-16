@@ -72,8 +72,19 @@ export function useSwapQuote(
       return;
     }
 
-    const parsedAmount = parseFloat(trimmed);
-    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+    // Validate format without converting through parseFloat (which
+    // destroys precision for very small amounts via scientific notation
+    // e.g. "0.000001" → 1e-7 → String() → "1e-7" → split(".") breaks).
+    if (!/^\d+\.?\d*$/.test(trimmed)) {
+      setQuote(null);
+      setError(null);
+      setIsComputing(false);
+      return;
+    }
+
+    // Quick positivity check (parseTokenAmount handles the actual conversion)
+    const baseUnitsCheck = parseTokenAmount(trimmed, decimals);
+    if (baseUnitsCheck <= 0n) {
       setQuote(null);
       setError(null);
       setIsComputing(false);
@@ -84,8 +95,10 @@ export function useSwapQuote(
 
     timerRef.current = setTimeout(() => {
       try {
-        // Convert human-readable amount to base units then to Q64.64
-        const baseUnits = parseTokenAmount(String(parsedAmount), decimals);
+        // Convert human-readable amount to base units then to Q64.64.
+        // Pass the original trimmed string directly — never round-trip
+        // through parseFloat which loses precision for small/large amounts.
+        const baseUnits = parseTokenAmount(trimmed, decimals);
         const amountQ = Q6464.fromTokenAmount(baseUnits, decimals);
 
         // Always use tick-aware path — it handles the tickCount == 0

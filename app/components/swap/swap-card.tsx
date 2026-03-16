@@ -50,7 +50,7 @@ export function SwapCard() {
 
   // Data hooks
   const { pool, isLoading: poolLoading } = usePoolState();
-  const { ticks: rawTicks } = usePoolTicks(pool?.nAssets ?? 3);
+  const { ticks: rawTicks, isLoading: ticksLoading } = usePoolTicks(pool?.nAssets ?? 3);
   const { balances, refresh: refreshBalances } = useTokenBalances();
 
   // Convert TickInfo[] from usePoolTicks to TickData[] for the swap calculator.
@@ -68,8 +68,14 @@ export function SwapCard() {
     [rawTicks],
   );
 
+  // Suppress quote computation while tick data is still loading for a pool
+  // that has ticks. Without this, computeSwapQuoteWithTicks throws a
+  // "tick data is empty" error that flashes to the user on every page load.
+  const poolHasTicks = pool && pool.tickCount > 0;
+  const ticksReady = !poolHasTicks || !ticksLoading;
+
   const { quote, error: quoteError, isComputing } = useSwapQuote(
-    pool,
+    ticksReady ? pool : null,
     tokenIn.index,
     tokenOut.index,
     amountIn,

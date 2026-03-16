@@ -43,11 +43,8 @@ export function QuoteDetails({
   const rate = quote.amountOut.toNumber() / quote.amountIn.toNumber();
   const rateStr = rate.toFixed(6);
 
-  // Fee in human-readable units
-  const feeHuman =
-    quote.feeAmount.toNumber() /
-    (quote.amountIn.toNumber() > 0 ? 1 : 1);
-  const feeStr = feeHuman.toFixed(6);
+  // Fee in human-readable units (Q6464.toNumber() already returns the float)
+  const feeStr = quote.feeAmount.toNumber().toFixed(6);
 
   // Minimum received after slippage
   const minReceived =

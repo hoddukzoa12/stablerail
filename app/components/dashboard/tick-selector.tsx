@@ -120,17 +120,19 @@ function kToQ6464Raw(k: number): bigint {
 }
 
 /**
- * Find an existing tick whose k value is close enough to the target.
- * Tolerance: 0.1% relative difference.
+ * Find an existing tick whose k_raw matches the target exactly.
+ *
+ * Compares Q64.64 bigint values directly rather than float approximation
+ * to ensure PDA derivation consistency — even a 1-ULP difference in kRaw
+ * produces a different PDA, causing add_liquidity to target a nonexistent account.
  */
 function findMatchingTick(
   ticks: TickInfo[],
-  targetK: number,
+  targetKRaw: bigint,
 ): TickInfo | undefined {
   return ticks.find((t) => {
     if (t.status !== "Interior") return false;
-    const diff = Math.abs(t.kDisplay - targetK) / targetK;
-    return diff < 0.001;
+    return t.kRaw === targetKRaw;
   });
 }
 
@@ -177,12 +179,13 @@ export function TickSelector({
     const k = presetToK(PRESETS[level].kPercent);
     setKInput(k.toFixed(4));
 
-    // Check if an existing tick matches
-    const match = findMatchingTick(ticks, k);
+    // Check if an existing tick matches (compare Q64.64 bigint, not float)
+    const raw = kToQ6464Raw(k);
+    const match = findMatchingTick(ticks, raw);
     if (match) {
       onChange({ mode: "concentrated", tickAddress: match.address });
     } else {
-      onChange({ mode: "concentrated", kRaw: kToQ6464Raw(k) });
+      onChange({ mode: "concentrated", kRaw: raw });
     }
   }
 
@@ -198,11 +201,11 @@ export function TickSelector({
       return;
     }
 
-    const match = findMatchingTick(ticks, k);
+    const raw = kToQ6464Raw(k);
+    const match = findMatchingTick(ticks, raw);
     if (match) {
       onChange({ mode: "concentrated", tickAddress: match.address });
     } else {
-      const raw = kToQ6464Raw(k);
       onChange({ mode: "concentrated", kRaw: raw });
     }
   }
@@ -273,7 +276,7 @@ export function TickSelector({
                     activePreset === level && selection.mode === "concentrated";
                   const previewK = presetToK(config.kPercent);
                   const preview = computeTickPreview(previewK, radius, n);
-                  const hasExisting = findMatchingTick(ticks, previewK);
+                  const hasExisting = findMatchingTick(ticks, kToQ6464Raw(previewK));
 
                   return (
                     <button
