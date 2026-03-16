@@ -273,8 +273,6 @@ export function computeSwapQuoteWithTicks(
   const simReserves = poolState.reserves.map((r) => new Q6464(r.raw));
   let simRadius = new Q6464(r.raw);
   let simTotalInteriorLiquidity = new Q6464(poolState.totalInteriorLiquidity.raw);
-  let simTotalBoundaryLiquidity = Q6464.zero(); // will compute if needed
-
   // Build mutable tick state
   const simTicks: MutableTick[] = ticks.map((t) => ({
     k: new Q6464(t.kRaw),
@@ -461,8 +459,9 @@ function findNearestTickBoundaries(
         }
       }
     } else {
-      // Boundary ticks strictly above alpha
-      if (tick.k.raw > currentAlpha.raw) {
+      // Boundary ticks at or above alpha (non-strict: create_tick classifies
+      // k >= alpha as Boundary, so k == alpha must be detected for crossing)
+      if (tick.k.raw >= currentAlpha.raw) {
         if (nearestKUpper === null || tick.k.raw < nearestKUpper.raw) {
           nearestKUpper = tick.k;
         }
@@ -617,7 +616,8 @@ function flipTick(
       return totalInteriorLiquidity.add(tick.liquidity);
     }
   }
-  return totalInteriorLiquidity;
+  // No tick matched k_cross — mirrors on-chain TickCrossingFailed error
+  throw new Error(`flipTick: no tick matched k_cross=${kCross.raw}`);
 }
 
 /**
@@ -647,6 +647,33 @@ function recomputeRadius(reserves: Q6464[], n: number): Q6464 {
   }
 
   return sumX.add(discriminant.sqrt()).div(nMinus1);
+}
+
+// ══════════════════════════════════════════════════════════════
+// Public helpers
+// ══════════════════════════════════════════════════════════════
+
+/**
+ * Parse a human-readable token amount string to base units (bigint).
+ *
+ * Uses string-based arithmetic to avoid IEEE-754 precision loss that
+ * occurs with `Math.floor(parseFloat(s) * 10 ** decimals)` for amounts
+ * above ~9 billion tokens (2^53 / 10^6).
+ *
+ * @param s - Human-readable amount (e.g. "1.5", "1000000")
+ * @param decimals - Token decimal places (e.g. 6 for USDC)
+ * @returns Base units as bigint (e.g. 1_500_000n for "1.5" with 6 decimals)
+ */
+export function parseTokenAmount(s: string, decimals: number): bigint {
+  const trimmed = s.trim();
+  if (!trimmed || trimmed === '.' || trimmed === '-') return 0n;
+
+  const [intPart = '0', fracPart = ''] = trimmed.split('.');
+  // Truncate fractional digits beyond token precision (no rounding)
+  const frac = fracPart.slice(0, decimals).padEnd(decimals, '0');
+  const combined = intPart + frac;
+  // Remove leading zeros but keep at least one digit
+  return BigInt(combined.replace(/^0+(?=\d)/, ''));
 }
 
 // ══════════════════════════════════════════════════════════════

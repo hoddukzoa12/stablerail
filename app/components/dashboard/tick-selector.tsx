@@ -90,14 +90,30 @@ function fmtDepeg(n: number): string {
   return `$${fmt(n)}`;
 }
 
-/** Convert a floating k value to Q64.64 raw bigint. */
+/**
+ * Convert a floating k value to Q64.64 raw bigint.
+ *
+ * Uses string-based fractional encoding to avoid `Number(1n << 64n)` which
+ * overflows IEEE-754 double precision (2^64 > Number.MAX_SAFE_INTEGER).
+ * Instead, we decompose the decimal fraction via string manipulation and
+ * multiply by 2^64 in BigInt space for exact results.
+ */
 function kToQ6464Raw(k: number): bigint {
   const SCALE = 1n << 64n;
   const negative = k < 0;
   const abs = Math.abs(k);
-  const intPart = BigInt(Math.floor(abs));
-  const fracPart = abs - Number(intPart);
-  const fracScaled = BigInt(Math.round(fracPart * Number(SCALE)));
+
+  // Use string decomposition to avoid float→BigInt precision loss
+  const str = abs.toFixed(18); // 18 decimal places for max precision
+  const [intStr, fracStr = "0"] = str.split(".");
+  const intPart = BigInt(intStr);
+
+  // fracScaled = fracStr * 2^64 / 10^fracLen — all in BigInt
+  const fracLen = fracStr.length;
+  const fracNumerator = BigInt(fracStr) * SCALE;
+  const fracDenominator = 10n ** BigInt(fracLen);
+  const fracScaled = fracNumerator / fracDenominator;
+
   let raw = (intPart << 64n) + fracScaled;
   if (negative) raw = -raw;
   return raw;

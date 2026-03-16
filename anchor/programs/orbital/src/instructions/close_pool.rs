@@ -61,7 +61,7 @@ pub fn handler<'info>(
         OrbitalError::PoolNotEmpty
     );
     require!(
-        pool.total_interior_liquidity.raw <= pool.seed_liquidity.raw,
+        pool.total_interior_liquidity.raw == pool.seed_liquidity.raw,
         OrbitalError::PoolNotEmpty
     );
 

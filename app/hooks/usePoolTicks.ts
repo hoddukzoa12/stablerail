@@ -80,20 +80,19 @@ export function usePoolTicks(nAssets: number = 3) {
         );
       }
 
-      // Deduplicate ticks with the same k value — keep the one with highest liquidity
-      const byK = new Map<string, TickInfo>();
-      for (const t of parsed) {
-        const key = t.kRaw.toString();
-        const existing = byK.get(key);
-        if (!existing || t.liquidityRaw > existing.liquidityRaw) {
-          byK.set(key, t);
-        }
+      // Detect duplicate k values — on-chain DuplicateTickAccount guard should
+      // prevent this, but corrupted state must surface as an error, not be
+      // silently masked by deduplication.
+      const kSet = new Set(parsed.map((t) => t.kRaw.toString()));
+      if (kSet.size !== parsed.length) {
+        throw new Error(
+          "Duplicate tick k-values detected — pool state may be corrupted",
+        );
       }
-      const deduped = Array.from(byK.values());
 
       // Sort by k value ascending
-      deduped.sort((a, b) => a.kDisplay - b.kDisplay);
-      setTicks(deduped);
+      parsed.sort((a, b) => a.kDisplay - b.kDisplay);
+      setTicks(parsed);
       setError(null);
     } catch (err) {
       console.error("Failed to fetch pool ticks:", err);

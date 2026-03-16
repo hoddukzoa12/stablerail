@@ -221,7 +221,15 @@ pub fn handler<'info>(
             return Ok(());
         }
 
-        // Interior tick: use standard pool-level withdrawal, then adjust tick reserves
+        // Interior tick: validate tick liquidity BEFORE mutating pool state.
+        // Hard-fail if position requests more liquidity than the tick holds.
+        // Same invariant as the Boundary path above.
+        require!(
+            remove_amount.raw <= tick.liquidity.raw,
+            OrbitalError::InsufficientPositionBalance
+        );
+
+        // Use standard pool-level withdrawal, then adjust tick reserves
         let result = remove_liquidity_from_pool(pool, remove_amount)?;
 
         // Subtract proportional share from tick reserves.
@@ -237,12 +245,6 @@ pub fn handler<'info>(
             };
             tick.reserves[i] = tick.reserves[i].checked_sub(sub)?;
         }
-        // Hard-fail if position requests more liquidity than the tick holds.
-        // Same invariant as the Boundary path above.
-        require!(
-            remove_amount.raw <= tick.liquidity.raw,
-            OrbitalError::InsufficientPositionBalance
-        );
         tick.liquidity = tick.liquidity.checked_sub(remove_amount)?;
 
         save_tick_state(tick_acc, &tick)?;

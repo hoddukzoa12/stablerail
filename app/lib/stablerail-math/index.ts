@@ -30,6 +30,7 @@ export {
 export {
   computeSwapQuote,
   computeSwapQuoteWithTicks,
+  parseTokenAmount,
   type PoolState,
   type SwapQuote,
   type TickData,

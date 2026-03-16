@@ -205,8 +205,10 @@ pub fn find_nearest_tick_boundaries(
             }
             TickStatus::Boundary => {
                 has_boundary = true;
-                // Boundary ticks above alpha: potential crossing on alpha increase
-                if k.raw > current_alpha.raw {
+                // Boundary ticks at or above alpha: potential crossing on alpha increase.
+                // Non-strict `>=` is required because create_tick classifies k >= alpha
+                // as Boundary — a subsequent alpha-increasing swap must detect the crossing.
+                if k.raw >= current_alpha.raw {
                     match nearest_k_upper {
                         None => nearest_k_upper = Some(k),
                         Some(prev) if k.raw < prev.raw => nearest_k_upper = Some(k),

@@ -15,6 +15,7 @@ import { useState, useEffect, useRef } from "react";
 import {
   Q6464,
   computeSwapQuoteWithTicks,
+  parseTokenAmount,
 } from "../lib/stablerail-math";
 import type {
   PoolState,
@@ -84,9 +85,7 @@ export function useSwapQuote(
     timerRef.current = setTimeout(() => {
       try {
         // Convert human-readable amount to base units then to Q64.64
-        const baseUnits = BigInt(
-          Math.floor(parsedAmount * 10 ** decimals),
-        );
+        const baseUnits = parseTokenAmount(String(parsedAmount), decimals);
         const amountQ = Q6464.fromTokenAmount(baseUnits, decimals);
 
         // Always use tick-aware path — it handles the tickCount == 0

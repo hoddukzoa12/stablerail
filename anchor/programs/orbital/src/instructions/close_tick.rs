@@ -74,8 +74,7 @@ pub fn handler(ctx: Context<CloseTick>, _params: CloseTickParams) -> Result<()> 
     if tick.status == TickStatus::Boundary {
         for i in 0..n {
             if !tick.reserves[i].is_zero() {
-                pool.reserves[i] = pool.reserves[i].checked_add(tick.reserves[i])
-                    .unwrap_or(pool.reserves[i]);
+                pool.reserves[i] = pool.reserves[i].checked_add(tick.reserves[i])?;
                 reserves_changed = true;
             }
         }

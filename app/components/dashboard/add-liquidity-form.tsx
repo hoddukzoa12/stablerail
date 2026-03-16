@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useCallback, useMemo } from "react";
-import { type Address, getProgramDerivedAddress, getAddressEncoder } from "@solana/kit";
+import { type Address, getProgramDerivedAddress, getAddressEncoder, createSolanaRpc } from "@solana/kit";
+import type { Signature } from "@solana/keys";
 import { Button } from "../ui/button";
 import { TxNotification } from "../ui/tx-notification";
 import { TOKENS } from "../../lib/tokens";
@@ -151,8 +152,19 @@ export function AddLiquidityForm({
         );
         if (!tickSig) throw new Error("Tick creation failed");
 
-        // Wait for confirmation
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+        // Wait for on-chain confirmation before deriving PDA / refreshing ticks.
+        // Poll getSignatureStatuses instead of blind setTimeout to avoid races.
+        const rpc = createSolanaRpc("https://api.devnet.solana.com");
+        const maxAttempts = 15; // ~15s max (1s interval)
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+          const statusResp = await rpc
+            .getSignatureStatuses([tickSig as Signature])
+            .send();
+          const status = statusResp.value[0];
+          if (status && status.confirmationStatus === "confirmed") break;
+          if (status && status.confirmationStatus === "finalized") break;
+          await new Promise((r) => setTimeout(r, 1000));
+        }
         await refreshTicks();
 
         // Derive the new tick PDA using k_raw (i128 LE, 16 bytes)

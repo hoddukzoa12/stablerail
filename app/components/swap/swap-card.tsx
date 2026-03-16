@@ -16,6 +16,7 @@ import { usePoolTicks } from "../../hooks/usePoolTicks";
 import { useSwapQuote } from "../../hooks/useSwapQuote";
 import { useTokenBalances } from "../../hooks/useTokenBalances";
 import { useExecuteSwap } from "../../hooks/useExecuteSwap";
+import { parseTokenAmount } from "../../lib/stablerail-math";
 import type { TickData } from "../../lib/stablerail-math";
 
 /** Default slippage: 0.5% = 50 bps */
@@ -137,9 +138,7 @@ export function SwapCard() {
       const minAmountOut =
         (quote.amountOutU64 * slippageMultiplier) / 10000n;
 
-      const inputBaseUnits = BigInt(
-        Math.floor(parseFloat(amountIn) * 10 ** tokenIn.decimals),
-      );
+      const inputBaseUnits = parseTokenAmount(amountIn, tokenIn.decimals);
 
       const sig = await execute({
         tokenInIndex: tokenIn.index,
