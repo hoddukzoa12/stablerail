@@ -1,7 +1,8 @@
 use anchor_lang::prelude::*;
 
+use crate::domain::core::{recompute_sphere, update_caches};
 use crate::errors::OrbitalError;
-use crate::state::{PoolState, TickState};
+use crate::state::{PoolState, TickState, TickStatus};
 
 #[derive(AnchorSerialize, AnchorDeserialize)]
 pub struct CloseTickParams {
@@ -63,17 +64,30 @@ pub fn handler(ctx: Context<CloseTick>, _params: CloseTickParams) -> Result<()> 
         OrbitalError::TickHasLiquidity
     );
 
-    // Return any residual dust reserves to the pool.
-    // Floor rounding during boundary withdrawal can leave sub-satoshi
-    // amounts in tick.reserves even after liquidity reaches zero.
+    // Only boundary ticks hold reserves separate from pool.reserves.
+    // Interior tick reserves are already included in pool.reserves
+    // (interior swaps update pool.reserves directly, not tick.reserves),
+    // so adding them back would double-count and corrupt pool state.
     let n = pool.n_assets as usize;
     let pool = &mut ctx.accounts.pool;
-    for i in 0..n {
-        if !tick.reserves[i].is_zero() {
-            pool.reserves[i] = pool.reserves[i].checked_add(tick.reserves[i])
-                .unwrap_or(pool.reserves[i]);
+    let mut reserves_changed = false;
+    if tick.status == TickStatus::Boundary {
+        for i in 0..n {
+            if !tick.reserves[i].is_zero() {
+                pool.reserves[i] = pool.reserves[i].checked_add(tick.reserves[i])
+                    .unwrap_or(pool.reserves[i]);
+                reserves_changed = true;
+            }
         }
     }
+
+    // Refresh sphere geometry and caches so subsequent swaps use
+    // correct pricing after the reserve mutation.
+    if reserves_changed {
+        recompute_sphere(pool)?;
+        update_caches(pool)?;
+    }
+
     pool.tick_count = pool
         .tick_count
         .checked_sub(1)
