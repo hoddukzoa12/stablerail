@@ -82,9 +82,16 @@ pub fn handler(ctx: Context<CreateTick>, params: CreateTickParams) -> Result<()>
     tick.pool = pool.key();
     tick.k = k;
     // Set initial status based on current alpha:
-    // k < alpha → Interior (within active trading range)
-    // k >= alpha → Boundary (outside active range, frozen until crossing)
-    tick.status = if k.raw < pool.alpha_cache.raw {
+    // k <= alpha → Interior (within active trading range)
+    // k > alpha  → Boundary (outside active range, frozen until crossing)
+    //
+    // Non-strict `<=` ensures a tick created exactly at alpha starts as
+    // Interior. With strict `<`, k == alpha would be Boundary — triggering
+    // an immediate false crossing on the next alpha-increasing swap (since
+    // find_nearest_tick_boundaries uses `>=` for boundary scan), and
+    // compute_delta_to_boundary would return zero, skipping flip_tick
+    // entirely and leaving tick status permanently desynchronized.
+    tick.status = if k.raw <= pool.alpha_cache.raw {
         TickStatus::Interior
     } else {
         TickStatus::Boundary

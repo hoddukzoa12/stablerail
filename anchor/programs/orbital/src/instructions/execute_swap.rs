@@ -210,8 +210,22 @@ pub fn handler<'info>(
                         n,
                     )?;
 
-                    if delta.raw <= 0 || delta.raw > remaining_in.raw {
-                        // Can't reach boundary or delta exceeds remaining → full swap
+                    if delta.raw == 0 {
+                        // Delta is exactly zero — alpha is already at the tick boundary.
+                        // This can occur if a Boundary tick exists at k == alpha (e.g.,
+                        // from legacy create_tick before the <= fix). Flip the tick
+                        // immediately without a partial swap so it doesn't block every
+                        // subsequent iteration as a phantom crossing.
+                        update_caches(pool)?;
+                        let alpha_at_boundary = pool.alpha_cache;
+                        let (from_status, tick_key) = flip_tick(tick_accounts, k_cross, pool)?;
+                        recompute_sphere(pool)?;
+                        update_caches(pool)?;
+                        emit_tick_crossed_event(tick_key, pool.key(), alpha_at_boundary, from_status)?;
+                        // remaining_in unchanged — next iteration retries the swap
+                    } else if delta.raw < 0 || delta.raw > remaining_in.raw {
+                        // Negative delta (unreachable boundary) or delta exceeds
+                        // remaining input → apply full remaining swap without crossing.
                         apply_partial_swap(
                             pool, token_in, token_out, remaining_in, tentative_out,
                         )?;
@@ -253,8 +267,11 @@ pub fn handler<'info>(
         // Guard: if the loop exhausted max_iterations with remaining input,
         // something is wrong (e.g., delta stuck at zero). Fail rather than
         // silently executing a partial swap that loses the user's funds.
+        // Guard: remaining_in must be fully consumed. Use `<= 0` instead of
+        // `is_zero()` because Q64.64 rounding in checked_sub(delta) can produce
+        // a tiny negative remainder (is_zero checks `== 0`, missing negatives).
         require!(
-            remaining_in.is_zero(),
+            remaining_in.raw <= 0,
             OrbitalError::TickCrossingFailed
         );
 
@@ -441,7 +458,9 @@ fn apply_partial_swap(
     pool.reserves[token_in] = new_in;
 
     let new_out = pool.reserves[token_out].checked_sub(amount_out)?;
-    require!(new_out.raw >= 0, OrbitalError::InsufficientLiquidity);
+    // Strict > 0: a zero reserve breaks the sphere invariant (r - x = r)
+    // and causes division-by-zero in subsequent price calculations.
+    require!(new_out.raw > 0, OrbitalError::InsufficientLiquidity);
     pool.reserves[token_out] = new_out;
 
     // Note: volume tracking is handled by the caller (handler or execute_swap)

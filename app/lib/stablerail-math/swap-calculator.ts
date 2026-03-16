@@ -311,6 +311,8 @@ export function computeSwapQuoteWithTicks(
       // No crossing → apply full remaining swap
       applyPartialSwap(simReserves, tokenInIndex, tokenOutIndex, remainingIn, tentativeOut);
       totalOut = totalOut.add(tentativeOut);
+      // Keep simRadius in sync with on-chain recompute_sphere after reserve mutation
+      simRadius = recomputeRadius(simReserves, n);
       remainingIn = Q6464.zero();
     } else {
       // Compute delta to reach the tick boundary
@@ -323,10 +325,18 @@ export function computeSwapQuoteWithTicks(
         n,
       );
 
-      if (delta.raw <= 0n || delta.raw > remainingIn.raw) {
+      if (delta.raw === 0n) {
+        // Delta exactly zero — alpha is already at the boundary tick.
+        // Mirror on-chain: flip the tick without a partial swap so the
+        // phantom crossing doesn't repeat on every iteration.
+        simTotalInteriorLiquidity = flipTick(simTicks, crossingK, simReserves, n, simTotalInteriorLiquidity);
+        simRadius = recomputeRadius(simReserves, n);
+        // remainingIn unchanged — next iteration retries
+      } else if (delta.raw < 0n || delta.raw > remainingIn.raw) {
         // Can't reach boundary or exceeds remaining → apply full swap
         applyPartialSwap(simReserves, tokenInIndex, tokenOutIndex, remainingIn, tentativeOut);
         totalOut = totalOut.add(tentativeOut);
+        simRadius = recomputeRadius(simReserves, n);
         remainingIn = Q6464.zero();
       } else {
         // Partial swap up to the tick boundary

@@ -123,18 +123,21 @@ pub fn handler<'info>(
                 remove_amount.raw <= tick.liquidity.raw,
                 OrbitalError::InsufficientPositionBalance
             );
-            pool.total_boundary_liquidity = pool
-                .total_boundary_liquidity
-                .checked_sub(remove_amount)?;
 
             // For boundary ticks, return amounts are computed from tick's own
             // reserves (which were snapshotted at crossing time), not pool reserves.
+            // Compute tick_fraction BEFORE decrementing liquidity counters so that
+            // a mid-computation error doesn't leave pool.total_boundary_liquidity
+            // decremented without tick.liquidity being updated (state inconsistency).
             let tick_fraction = if tick.liquidity.is_positive() {
                 remove_amount.checked_div(tick.liquidity)?
             } else {
                 FixedPoint::zero()
             };
 
+            pool.total_boundary_liquidity = pool
+                .total_boundary_liquidity
+                .checked_sub(remove_amount)?;
             tick.liquidity = tick.liquidity.checked_sub(remove_amount)?;
 
             // Compute return amounts from tick reserves.
