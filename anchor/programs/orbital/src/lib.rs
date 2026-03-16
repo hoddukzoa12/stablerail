@@ -37,6 +37,10 @@ pub mod orbital {
         instructions::create_tick::handler(ctx, params)
     }
 
+    pub fn close_tick(ctx: Context<CloseTick>, params: CloseTickParams) -> Result<()> {
+        instructions::close_tick::handler(ctx, params)
+    }
+
     // ═══════════════════════════════════════════
     //  Liquidity Context — LP Position Management
     // ═══════════════════════════════════════════

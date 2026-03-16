@@ -148,4 +148,7 @@ pub enum OrbitalError {
 
     #[msg("Maximum tick count reached (16)")]
     MaxTicksReached,
+
+    #[msg("Cannot close tick: liquidity is non-zero")]
+    TickHasLiquidity,
 }

@@ -215,8 +215,16 @@ export function computeSwapQuoteWithTicks(
   tokenOutIndex: number,
   amountIn: Q6464,
 ): SwapQuote {
-  // Fall back to single-sphere if no ticks
+  // Fall back to single-sphere only if the pool genuinely has no ticks.
+  // If the pool has ticks (tickCount > 0) but tick data is missing (fetch
+  // failure / initial load), refuse to quote — on-chain execute_swap requires
+  // all tick accounts and would reject with InvalidRemainingAccounts.
   if (!ticks || ticks.length === 0) {
+    if (poolState.tickCount > 0) {
+      throw new Error(
+        `computeSwapQuoteWithTicks: pool has ${poolState.tickCount} ticks but tick data is empty — cannot produce accurate quote`,
+      );
+    }
     return computeSwapQuote(poolState, tokenInIndex, tokenOutIndex, amountIn);
   }
 
