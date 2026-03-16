@@ -228,6 +228,14 @@ export function computeSwapQuoteWithTicks(
     return computeSwapQuote(poolState, tokenInIndex, tokenOutIndex, amountIn);
   }
 
+  // Reject partial tick sets — on-chain requires ALL tick accounts.
+  // A subset would miss boundary crossings and produce incorrect quotes.
+  if (ticks.length !== poolState.tickCount) {
+    throw new Error(
+      `computeSwapQuoteWithTicks: expected ${poolState.tickCount} ticks but got ${ticks.length} — partial tick set not supported`,
+    );
+  }
+
   // ── 1. Input validation ──
   const n = poolState.nAssets;
   if (tokenInIndex === tokenOutIndex) {

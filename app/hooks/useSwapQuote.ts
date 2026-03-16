@@ -14,7 +14,6 @@
 import { useState, useEffect, useRef } from "react";
 import {
   Q6464,
-  computeSwapQuote,
   computeSwapQuoteWithTicks,
 } from "../lib/stablerail-math";
 import type {
@@ -90,17 +89,17 @@ export function useSwapQuote(
         );
         const amountQ = Q6464.fromTokenAmount(baseUnits, decimals);
 
-        const currentTicks = ticksRef.current;
-        const result =
-          currentTicks && currentTicks.length > 0
-            ? computeSwapQuoteWithTicks(
-                pool,
-                currentTicks,
-                tokenInIndex,
-                tokenOutIndex,
-                amountQ,
-              )
-            : computeSwapQuote(pool, tokenInIndex, tokenOutIndex, amountQ);
+        // Always use tick-aware path — it handles the tickCount == 0
+        // fallback internally and rejects when ticks are missing for
+        // pools that have them (prevents misleading single-sphere quotes).
+        const currentTicks = ticksRef.current ?? [];
+        const result = computeSwapQuoteWithTicks(
+          pool,
+          currentTicks,
+          tokenInIndex,
+          tokenOutIndex,
+          amountQ,
+        );
 
         setQuote(result);
         setError(null);
