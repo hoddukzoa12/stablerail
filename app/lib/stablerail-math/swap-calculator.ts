@@ -326,12 +326,23 @@ export function computeSwapQuoteWithTicks(
       );
 
       if (delta.raw === 0n) {
-        // Delta exactly zero — alpha is already at the boundary tick.
-        // Mirror on-chain: flip the tick without a partial swap so the
-        // phantom crossing doesn't repeat on every iteration.
-        simTotalInteriorLiquidity = flipTick(simTicks, crossingK, simReserves, n, simTotalInteriorLiquidity);
-        simRadius = recomputeRadius(simReserves, n);
-        // remainingIn unchanged — next iteration retries
+        // Delta zero has two meanings:
+        //   (a) Alpha is exactly at k_cross → flip_tick is correct
+        //   (b) Boundary geometrically unreachable (negative discriminant
+        //       or no positive root) → flipping corrupts tick state.
+        // Disambiguate by checking alpha == k_cross (mirrors on-chain).
+        const freshAlpha = computeAlphaFromReserves(simReserves, n);
+        if (freshAlpha.raw === crossingK.raw) {
+          simTotalInteriorLiquidity = flipTick(simTicks, crossingK, simReserves, n, simTotalInteriorLiquidity);
+          simRadius = recomputeRadius(simReserves, n);
+          // remainingIn unchanged — next iteration retries
+        } else {
+          // Boundary unreachable — treat as non-crossing, apply full swap
+          applyPartialSwap(simReserves, tokenInIndex, tokenOutIndex, remainingIn, tentativeOut);
+          totalOut = totalOut.add(tentativeOut);
+          simRadius = recomputeRadius(simReserves, n);
+          remainingIn = Q6464.zero();
+        }
       } else if (delta.raw < 0n || delta.raw > remainingIn.raw) {
         // Can't reach boundary or exceeds remaining → apply full swap
         applyPartialSwap(simReserves, tokenInIndex, tokenOutIndex, remainingIn, tentativeOut);

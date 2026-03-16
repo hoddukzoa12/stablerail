@@ -211,18 +211,30 @@ pub fn handler<'info>(
                     )?;
 
                     if delta.raw == 0 {
-                        // Delta is exactly zero — alpha is already at the tick boundary.
-                        // This can occur if a Boundary tick exists at k == alpha (e.g.,
-                        // from legacy create_tick before the <= fix). Flip the tick
-                        // immediately without a partial swap so it doesn't block every
-                        // subsequent iteration as a phantom crossing.
+                        // Delta zero has two meanings:
+                        //   (a) Alpha is exactly at k_cross → flip_tick is correct
+                        //   (b) Boundary is geometrically unreachable (negative discriminant
+                        //       or no positive root in compute_delta_to_boundary) → flip_tick
+                        //       would corrupt tick status and reserve accounting.
+                        //
+                        // Disambiguate by checking whether alpha actually equals k_cross.
+                        // Only flip when they match; otherwise treat as non-crossing.
                         update_caches(pool)?;
-                        let alpha_at_boundary = pool.alpha_cache;
-                        let (from_status, tick_key) = flip_tick(tick_accounts, k_cross, pool)?;
-                        recompute_sphere(pool)?;
-                        update_caches(pool)?;
-                        emit_tick_crossed_event(tick_key, pool.key(), alpha_at_boundary, from_status)?;
-                        // remaining_in unchanged — next iteration retries the swap
+                        if pool.alpha_cache.raw == k_cross.raw {
+                            let alpha_at_boundary = pool.alpha_cache;
+                            let (from_status, tick_key) = flip_tick(tick_accounts, k_cross, pool)?;
+                            recompute_sphere(pool)?;
+                            update_caches(pool)?;
+                            emit_tick_crossed_event(tick_key, pool.key(), alpha_at_boundary, from_status)?;
+                            // remaining_in unchanged — next iteration retries the swap
+                        } else {
+                            // Boundary unreachable — treat as non-crossing, apply full swap
+                            apply_partial_swap(
+                                pool, token_in, token_out, remaining_in, tentative_out,
+                            )?;
+                            total_out = total_out.checked_add(tentative_out)?;
+                            remaining_in = FixedPoint::zero();
+                        }
                     } else if delta.raw < 0 || delta.raw > remaining_in.raw {
                         // Negative delta (unreachable boundary) or delta exceeds
                         // remaining input → apply full remaining swap without crossing.
