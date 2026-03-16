@@ -81,7 +81,14 @@ pub fn handler(ctx: Context<CreateTick>, params: CreateTickParams) -> Result<()>
     tick.bump = ctx.bumps.tick;
     tick.pool = pool.key();
     tick.k = k;
-    tick.status = TickStatus::Interior;
+    // Set initial status based on current alpha:
+    // k < alpha → Interior (within active trading range)
+    // k >= alpha → Boundary (outside active range, frozen until crossing)
+    tick.status = if k.raw < pool.alpha_cache.raw {
+        TickStatus::Interior
+    } else {
+        TickStatus::Boundary
+    };
     tick.liquidity = FixedPoint::zero();
     tick.sphere_radius = tick_math.boundary_sphere_radius;
     tick.depeg_price = tick_math.depeg_price;

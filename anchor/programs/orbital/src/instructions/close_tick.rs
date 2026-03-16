@@ -63,8 +63,17 @@ pub fn handler(ctx: Context<CloseTick>, _params: CloseTickParams) -> Result<()> 
         OrbitalError::TickHasLiquidity
     );
 
-    // Decrement tick counter
+    // Return any residual dust reserves to the pool.
+    // Floor rounding during boundary withdrawal can leave sub-satoshi
+    // amounts in tick.reserves even after liquidity reaches zero.
+    let n = pool.n_assets as usize;
     let pool = &mut ctx.accounts.pool;
+    for i in 0..n {
+        if !tick.reserves[i].is_zero() {
+            pool.reserves[i] = pool.reserves[i].checked_add(tick.reserves[i])
+                .unwrap_or(pool.reserves[i]);
+        }
+    }
     pool.tick_count = pool
         .tick_count
         .checked_sub(1)
