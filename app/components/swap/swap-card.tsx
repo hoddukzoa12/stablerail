@@ -170,6 +170,7 @@ export function SwapCard() {
     slippageBps,
     execute,
     refreshBalances,
+    rawTicks,
   ]);
 
   // Connect wallet handler

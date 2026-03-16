@@ -41,9 +41,18 @@ pub fn handler<'info>(
         OrbitalError::Unauthorized
     );
 
-    // Guard 2: reject close if any LP positions have outstanding liquidity.
+    // Guard 2: all tick PDAs must be closed before pool closure.
+    // Tick PDAs are derived from (pool, k) — surviving ticks after pool close
+    // cause PDA collisions on re-initialization and stale tick discovery.
+    require!(
+        pool.tick_count == 0,
+        OrbitalError::PoolNotEmpty
+    );
+
+    // Guard 3: reject close if any LP positions have outstanding liquidity.
     //
-    // - Boundary liquidity must be zero (no concentrated tick positions active)
+    // - Boundary liquidity must be zero (no concentrated tick positions active;
+    //   implied by tick_count == 0 above, but explicit for defense-in-depth)
     // - Interior liquidity must equal seed liquidity (no full-range LP deposits
     //   remain beyond the initial seed from initialize_pool, which has no
     //   Position PDA and no burn path — see issue #47)
