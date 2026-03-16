@@ -111,8 +111,11 @@ function kToQ6464Raw(k: number | string): bigint {
   const negative = typeof k === "number" ? k < 0 : str.startsWith("-");
   const absStr = negative && typeof k === "string" ? str.slice(1) : str;
 
-  // Decompose decimal string into integer + fractional parts
-  const [intStr, fracStr = "0"] = absStr.split(".");
+  // Decompose decimal string into integer + fractional parts.
+  // Note: "3.".split(".") → ["3", ""] — the default "0" only applies when
+  // the array has no second element (no dot), not when it's an empty string.
+  const [intStr, rawFrac = ""] = absStr.split(".");
+  const fracStr = rawFrac || "0";
   const intPart = BigInt(intStr || "0");
 
   // fracScaled = fracStr * 2^64 / 10^fracLen — all in BigInt
