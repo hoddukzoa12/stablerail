@@ -9,7 +9,7 @@ pub mod state;
 
 use instructions::*;
 
-declare_id!("ATPBdhBzBz25JoQ1faaBd2prdHm93r8VxBjUv17Mfvj1");
+declare_id!("BZDXfJTBpH9ZMo2dz57BFKGNw4FYFCDr1KaUUkFtfRVD");
 
 #[program]
 pub mod orbital {
@@ -31,6 +31,10 @@ pub mod orbital {
         params: SwapParams,
     ) -> Result<()> {
         instructions::execute_swap::handler(ctx, params)
+    }
+
+    pub fn create_tick(ctx: Context<CreateTick>, params: CreateTickParams) -> Result<()> {
+        instructions::create_tick::handler(ctx, params)
     }
 
     // ═══════════════════════════════════════════

@@ -73,8 +73,8 @@ export function Modal({
           </div>
         )}
 
-        {/* Body */}
-        <div className="p-5">{children}</div>
+        {/* Body — scrollable when content overflows */}
+        <div className="max-h-[70vh] overflow-y-auto p-5">{children}</div>
       </div>
     </div>,
     document.body,

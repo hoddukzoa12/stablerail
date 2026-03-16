@@ -52,6 +52,8 @@ export interface SwapExecuteParams {
   userAtaIn: string;
   /** User's ATA for the output token */
   userAtaOut: string;
+  /** Tick account addresses from usePoolTicks (required for pools with ticks) */
+  tickAddresses: string[];
 }
 
 /**
@@ -103,11 +105,17 @@ export function useExecuteSwap() {
           { address: userAddress, role: 3 as const },          // user: WritableSigner
           { address: POOL_PDA as Address, role: 1 as const },  // pool: Writable
           { address: TOKEN_PROGRAM_ID, role: 0 as const },     // token_program: Readonly
-          // Remaining accounts (vault_in, vault_out, user_ata_in, user_ata_out)
+          // Remaining accounts (vault_in, vault_out, user_ata_in, user_ata_out, ...ticks)
           { address: params.vaultIn as Address, role: 1 as const },
           { address: params.vaultOut as Address, role: 1 as const },
           { address: params.userAtaIn as Address, role: 1 as const },
           { address: params.userAtaOut as Address, role: 1 as const },
+          // All tick accounts must be provided (writable) when pool has ticks.
+          // On-chain guard: tick_accounts.len() == pool.tick_count
+          ...params.tickAddresses.map((addr) => ({
+            address: addr as Address,
+            role: 1 as const,
+          })),
         ],
         data,
       };

@@ -29,7 +29,10 @@ pub struct PoolState {
     /// Placed at end of struct (append-only) to preserve layout compatibility
     /// with accounts created before decimal normalization was added.
     pub token_decimals: [u8; MAX_ASSETS],
-    pub _reserved: [u8; 104],
+    /// Seed liquidity deposited at initialize_pool (no Position PDA, no burn path).
+    /// Used by close_pool to distinguish seed deposit from LP positions.
+    pub seed_liquidity: FixedPoint,
+    pub _reserved: [u8; 88],
 }
 
 impl PoolState {
@@ -54,7 +57,8 @@ impl PoolState {
         + 8                                  // created_at
         + 8                                  // position_count
         + MAX_ASSETS                         // token_decimals (append-only)
-        + 104;                               // _reserved
+        + 16                                 // seed_liquidity
+        + 88;                                // _reserved
 
     pub fn active_reserves(&self) -> &[FixedPoint] {
         &self.reserves[..self.n_assets as usize]

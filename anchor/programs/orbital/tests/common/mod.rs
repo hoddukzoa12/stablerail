@@ -17,7 +17,7 @@ use solana_sdk::{
 // ── Constants ──
 
 pub const PROGRAM_ID: Pubkey =
-    solana_sdk::pubkey!("ATPBdhBzBz25JoQ1faaBd2prdHm93r8VxBjUv17Mfvj1");
+    solana_sdk::pubkey!("BZDXfJTBpH9ZMo2dz57BFKGNw4FYFCDr1KaUUkFtfRVD");
 pub const TOKEN_PROGRAM_ID: Pubkey =
     solana_sdk::pubkey!("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
 pub const ATA_PROGRAM_ID: Pubkey =

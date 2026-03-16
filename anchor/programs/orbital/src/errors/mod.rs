@@ -130,4 +130,22 @@ pub enum OrbitalError {
 
     #[msg("Cannot close pool: outstanding LP liquidity exists")]
     PoolNotEmpty,
+
+    #[msg("Tick account has invalid owner or discriminator")]
+    InvalidTickAccount,
+
+    #[msg("No tick matched the crossing k value")]
+    TickCrossingFailed,
+
+    #[msg("Failed to serialize tick state back to account")]
+    TickSerializationFailed,
+
+    #[msg("Tick account does not belong to this pool")]
+    TickPoolMismatch,
+
+    #[msg("Duplicate tick account in remaining_accounts")]
+    DuplicateTickAccount,
+
+    #[msg("Maximum tick count reached (16)")]
+    MaxTicksReached,
 }

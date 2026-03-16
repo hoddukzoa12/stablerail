@@ -34,16 +34,34 @@ pub fn handler<'info>(
     let pool = &ctx.accounts.pool;
     let n = pool.n_assets as usize;
 
-    // Guard: reject close if any LP positions are outstanding.
-    // This preserves the emergency-exit guarantee for LPs (see remove_liquidity.rs).
-    //
-    // TODO(post-hackathon): This guard is unreachable — initial seed liquidity
-    // (per_asset_deposit * n) has no Position PDA and no burn path, so
-    // total_interior_liquidity can never reach zero. Fix: add `initial_liquidity`
-    // field to PoolState and compare against it instead of zero.
-    // Tracked: https://github.com/hoddukzoa12/stablerail/issues/47
+    // Guard 1: only the authority can close the pool.
+    // (Also enforced by Anchor seeds constraint, but explicit for clarity.)
     require!(
-        pool.total_interior_liquidity.is_zero(),
+        ctx.accounts.authority.key() == pool.authority,
+        OrbitalError::Unauthorized
+    );
+
+    // Guard 2: all tick PDAs must be closed before pool closure.
+    // Tick PDAs are derived from (pool, k) — surviving ticks after pool close
+    // cause PDA collisions on re-initialization and stale tick discovery.
+    require!(
+        pool.tick_count == 0,
+        OrbitalError::PoolNotEmpty
+    );
+
+    // Guard 3: reject close if any LP positions have outstanding liquidity.
+    //
+    // - Boundary liquidity must be zero (no concentrated tick positions active;
+    //   implied by tick_count == 0 above, but explicit for defense-in-depth)
+    // - Interior liquidity must equal seed liquidity (no full-range LP deposits
+    //   remain beyond the initial seed from initialize_pool, which has no
+    //   Position PDA and no burn path — see issue #47)
+    require!(
+        pool.total_boundary_liquidity.is_zero(),
+        OrbitalError::PoolNotEmpty
+    );
+    require!(
+        pool.total_interior_liquidity.raw <= pool.seed_liquidity.raw,
         OrbitalError::PoolNotEmpty
     );
 

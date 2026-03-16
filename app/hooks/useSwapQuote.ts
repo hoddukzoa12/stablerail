@@ -3,14 +3,25 @@
 /**
  * Hook: compute off-chain swap quote with debounced input.
  *
- * Calls computeSwapQuote() from the stablerail-math SDK whenever
- * pool state or input amount changes. Debounces by 300ms to avoid
- * excessive computation during typing.
+ * When tick data is provided, uses `computeSwapQuoteWithTicks()` to
+ * simulate the on-chain trade segmentation loop (alpha-based crossing
+ * detection, delta-to-boundary quadratic solver, tick flipping).
+ * Falls back to single-sphere `computeSwapQuote()` when no ticks.
+ *
+ * Debounces by 300ms to avoid excessive computation during typing.
  */
 
 import { useState, useEffect, useRef } from "react";
-import { Q6464, computeSwapQuote } from "../lib/stablerail-math";
-import type { PoolState, SwapQuote } from "../lib/stablerail-math";
+import {
+  Q6464,
+  computeSwapQuote,
+  computeSwapQuoteWithTicks,
+} from "../lib/stablerail-math";
+import type {
+  PoolState,
+  SwapQuote,
+  TickData,
+} from "../lib/stablerail-math";
 
 /** Debounce delay for amount input changes */
 const DEBOUNCE_MS = 300;
@@ -29,6 +40,7 @@ interface UseSwapQuoteResult {
  * @param tokenOutIndex - Index of the output token in the pool
  * @param amountIn - User-entered amount string (e.g. "100.5")
  * @param decimals - Decimal places for the input token
+ * @param ticks - Optional tick data for concentrated liquidity routing
  */
 export function useSwapQuote(
   pool: PoolState | null,
@@ -36,11 +48,16 @@ export function useSwapQuote(
   tokenOutIndex: number,
   amountIn: string,
   decimals: number,
+  ticks?: TickData[],
 ): UseSwapQuoteResult {
   const [quote, setQuote] = useState<SwapQuote | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isComputing, setIsComputing] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Stable reference for ticks to avoid re-triggering on every render
+  const ticksRef = useRef<TickData[] | undefined>(ticks);
+  ticksRef.current = ticks;
 
   useEffect(() => {
     // Clear previous timer
@@ -73,12 +90,17 @@ export function useSwapQuote(
         );
         const amountQ = Q6464.fromTokenAmount(baseUnits, decimals);
 
-        const result = computeSwapQuote(
-          pool,
-          tokenInIndex,
-          tokenOutIndex,
-          amountQ,
-        );
+        const currentTicks = ticksRef.current;
+        const result =
+          currentTicks && currentTicks.length > 0
+            ? computeSwapQuoteWithTicks(
+                pool,
+                currentTicks,
+                tokenInIndex,
+                tokenOutIndex,
+                amountQ,
+              )
+            : computeSwapQuote(pool, tokenInIndex, tokenOutIndex, amountQ);
 
         setQuote(result);
         setError(null);
@@ -102,7 +124,7 @@ export function useSwapQuote(
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [pool, tokenInIndex, tokenOutIndex, amountIn, decimals]);
+  }, [pool, tokenInIndex, tokenOutIndex, amountIn, decimals, ticks]);
 
   return { quote, error, isComputing };
 }

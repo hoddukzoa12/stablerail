@@ -29,6 +29,9 @@ export {
 } from './sphere';
 export {
   computeSwapQuote,
+  computeSwapQuoteWithTicks,
   type PoolState,
   type SwapQuote,
+  type TickData,
+  type TickStatus,
 } from './swap-calculator';
