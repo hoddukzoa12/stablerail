@@ -470,9 +470,12 @@ fn apply_partial_swap(
     pool.reserves[token_in] = new_in;
 
     let new_out = pool.reserves[token_out].checked_sub(amount_out)?;
-    // Strict > 0: a zero reserve breaks the sphere invariant (r - x = r)
-    // and causes division-by-zero in subsequent price calculations.
-    require!(new_out.raw > 0, OrbitalError::InsufficientLiquidity);
+    // Match single-segment swap guard (domain/core/swap.rs:164): >= 0 not > 0.
+    // A zero output reserve is geometrically valid at the sphere boundary
+    // (e.g. 2-asset max trade). The post-loop verify_invariant() catches
+    // any actual invariant violations. Using > 0 here would reject valid
+    // max-sized trades that succeed via the single-segment path.
+    require!(new_out.raw >= 0, OrbitalError::InsufficientLiquidity);
     pool.reserves[token_out] = new_out;
 
     // Note: volume tracking is handled by the caller (handler or execute_swap)
