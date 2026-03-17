@@ -473,8 +473,10 @@ function findNearestTickBoundaries(
 
   for (const tick of ticks) {
     if (tick.status === 'Interior') {
-      // Interior ticks strictly below alpha
-      if (tick.k.raw < currentAlpha.raw) {
+      // Interior ticks at or below alpha (non-strict: create_tick classifies
+      // k <= alpha as Interior, so k == alpha must be detected for crossing
+      // when alpha subsequently decreases — mirrors on-chain torus.rs)
+      if (tick.k.raw <= currentAlpha.raw) {
         if (nearestKLower === null || tick.k.raw > nearestKLower.raw) {
           nearestKLower = tick.k;
         }

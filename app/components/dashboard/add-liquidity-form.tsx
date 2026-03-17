@@ -156,14 +156,20 @@ export function AddLiquidityForm({
         // Poll getSignatureStatuses instead of blind setTimeout to avoid races.
         const rpc = createSolanaRpc("https://api.devnet.solana.com");
         const maxAttempts = 15; // ~15s max (1s interval)
+        let tickConfirmed = false;
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
           const statusResp = await rpc
             .getSignatureStatuses([tickSig as Signature])
             .send();
           const status = statusResp.value[0];
-          if (status && status.confirmationStatus === "confirmed") break;
-          if (status && status.confirmationStatus === "finalized") break;
+          if (status && (status.confirmationStatus === "confirmed" || status.confirmationStatus === "finalized")) {
+            tickConfirmed = true;
+            break;
+          }
           await new Promise((r) => setTimeout(r, 1000));
+        }
+        if (!tickConfirmed) {
+          throw new Error("Tick creation not confirmed after 15s — please retry");
         }
         await refreshTicks();
 

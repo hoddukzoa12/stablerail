@@ -192,10 +192,14 @@ pub fn find_nearest_tick_boundaries(
     for &(k, status) in ticks {
         match status {
             TickStatus::Interior => {
-                // Interior ticks strictly below alpha: potential crossing on alpha decrease.
-                // Strict inequality prevents spurious crossings when alpha == k,
-                // and mirrors the strict `>` used for Boundary ticks above.
-                if k.raw < current_alpha.raw {
+                // Interior ticks at or below alpha: potential crossing on alpha decrease.
+                // Non-strict `<=` is required because create_tick classifies k <= alpha
+                // as Interior — a tick at k == alpha must be detected for crossing when
+                // alpha subsequently decreases. Without this, the tick remains Interior
+                // after alpha moves below k, desynchronizing status from the active range.
+                // (Safe: determine_crossing_k only triggers on alpha decrease, so
+                // a tick at k == alpha won't spuriously fire on alpha-increasing swaps.)
+                if k.raw <= current_alpha.raw {
                     match nearest_k_lower {
                         None => nearest_k_lower = Some(k),
                         Some(prev) if k.raw > prev.raw => nearest_k_lower = Some(k),
