@@ -3,6 +3,7 @@
 import { useState, useCallback, useMemo } from "react";
 import { type Address, getProgramDerivedAddress, getAddressEncoder, createSolanaRpc } from "@solana/kit";
 import type { Signature } from "@solana/keys";
+import { useWalletConnection } from "@solana/react-hooks";
 import { Button } from "../ui/button";
 import { TxNotification } from "../ui/tx-notification";
 import { TOKENS } from "../../lib/tokens";
@@ -41,6 +42,7 @@ function getSubmitLabel(
   allPositive: boolean,
   exceedsBalance: boolean,
   needsTickCreation: boolean,
+  blockedByAuthority: boolean,
 ): string {
   if (isSending)
     return needsTickCreation
@@ -49,6 +51,7 @@ function getSubmitLabel(
   if (!hasAnyInput) return "Enter amounts";
   if (!allPositive) return "All tokens required";
   if (exceedsBalance) return "Insufficient balance";
+  if (blockedByAuthority) return "Only authority can create ticks";
   if (needsTickCreation) return "Create Tick & Add Liquidity";
   return "Add Liquidity";
 }
@@ -64,6 +67,8 @@ export function AddLiquidityForm({
   const [tickSelection, setTickSelection] = useState<TickSelection>({
     mode: "full-range",
   });
+  const { wallet } = useWalletConnection();
+  const isAuthority = wallet?.account.address === pool.authority;
   const { execute, isSending, error } = useAddLiquidity();
   const {
     execute: createTick,
@@ -127,11 +132,14 @@ export function AddLiquidityForm({
     );
   };
 
-  // Whether we need to create a new tick first
+  // Whether we need to create a new tick first (only authority can create ticks)
   const needsTickCreation =
     tickSelection.mode === "concentrated" &&
     !tickSelection.tickAddress &&
     tickSelection.kRaw !== undefined;
+
+  // Non-authority wallets cannot create ticks — must select an existing one
+  const blockedByAuthority = needsTickCreation && !isAuthority;
 
   const handleSubmit = useCallback(async () => {
     setTxResult(null);
@@ -369,6 +377,12 @@ export function AddLiquidityForm({
         </div>
       )}
 
+      {blockedByAuthority && (
+        <div className="mt-2 rounded-lg bg-error/10 px-3 py-2 text-center text-[11px] text-error">
+          Only the pool authority can create new ticks. Please select an existing tick instead.
+        </div>
+      )}
+
       <Button
         variant="gradient"
         size="lg"
@@ -377,7 +391,8 @@ export function AddLiquidityForm({
           !allPositive ||
           exceedsBalance ||
           isSubmitting ||
-          !concentratedValid
+          !concentratedValid ||
+          blockedByAuthority
         }
         onClick={handleSubmit}
       >
@@ -387,6 +402,7 @@ export function AddLiquidityForm({
           allPositive,
           exceedsBalance,
           needsTickCreation,
+          blockedByAuthority,
         )}
       </Button>
 

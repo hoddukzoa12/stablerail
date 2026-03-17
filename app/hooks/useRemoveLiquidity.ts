@@ -13,9 +13,10 @@
  *   [2] position       — writable (role 1)
  *   [3] token_program  — readonly (role 0)
  *
- * Remaining accounts (2 × n_assets):
+ * Remaining accounts (2 × n_assets, or 2 × n_assets + 1 for tick positions):
  *   [0..n)  = vault token accounts (writable)
  *   [n..2n) = provider ATAs (writable)
+ *   [2n]    = optional tick account (writable, required if position has tick)
  */
 
 import { useState, useCallback } from "react";
@@ -32,6 +33,8 @@ export interface RemoveLiquidityExecuteParams {
   positionAddress: string;
   /** Full liquidity amount to withdraw (i128 raw value from PositionState) */
   liquidityRaw: bigint;
+  /** Tick account address (required for concentrated positions, omit for full-range) */
+  tickAddress?: string;
 }
 
 /**
@@ -79,9 +82,13 @@ export function useRemoveLiquidity() {
           { address: POOL_PDA as Address, role: 1 as const },
           { address: params.positionAddress as Address, role: 1 as const },
           { address: TOKEN_PROGRAM_ID, role: 0 as const },
-          // remaining_accounts: [vault0, vault1, vault2, ata0, ata1, ata2]
+          // remaining_accounts: [vault0..n, ata0..n, optional tick]
           ...TOKENS.map((t) => ({ address: t.vault as Address, role: 1 as const })),
           ...userAtas.map((ata) => ({ address: ata, role: 1 as const })),
+          // Append tick account for concentrated positions (on-chain requires 2*n+1)
+          ...(params.tickAddress
+            ? [{ address: params.tickAddress as Address, role: 1 as const }]
+            : []),
         ],
         data,
       };

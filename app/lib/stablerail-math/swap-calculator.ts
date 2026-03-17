@@ -47,6 +47,8 @@ export interface PoolState {
   totalInteriorLiquidity: Q6464;
   /** Number of ticks created for this pool */
   tickCount: number;
+  /** Pool authority pubkey (base58) */
+  authority: string;
 }
 
 /**
