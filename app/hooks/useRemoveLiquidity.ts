@@ -88,7 +88,10 @@ export function useRemoveLiquidity() {
 
       try {
         const sig = await send({ instructions: [instruction] });
-        return sig ? String(sig) : "";
+        if (!sig) {
+          throw new Error("Wallet adapter did not return a transaction signature");
+        }
+        return String(sig);
       } catch (err) {
         const e = err instanceof Error ? err : new Error(String(err));
         setError(e);
