@@ -163,6 +163,14 @@ export function AddLiquidityForm({
             .send();
           const status = statusResp.value[0];
           if (status && (status.confirmationStatus === "confirmed" || status.confirmationStatus === "finalized")) {
+            // Reject transactions that landed on-chain but failed execution
+            // (e.g. duplicate k, invalid tick bounds). Without this check,
+            // the flow would proceed to add_liquidity with a non-existent tick.
+            if (status.err) {
+              throw new Error(
+                `Tick creation transaction failed on-chain: ${JSON.stringify(status.err)}`,
+              );
+            }
             tickConfirmed = true;
             break;
           }
