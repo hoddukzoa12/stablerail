@@ -54,18 +54,33 @@ export function SwapCard() {
   const { balances, refresh: refreshBalances } = useTokenBalances();
 
   // Convert TickInfo[] from usePoolTicks to TickData[] for the swap calculator.
-  // Memoized to avoid creating new array references on every render.
+  // Filter to pool.tickCount entries when getProgramAccounts returns stale orphans
+  // (e.g. ticks from previous program deployments with the same pool PDA).
+  const filteredTicks = useMemo(() => {
+    if (!pool || rawTicks.length === 0) return rawTicks;
+    if (rawTicks.length <= pool.tickCount) return rawTicks;
+    // Keep ticks with liquidity first, then by k value
+    return [...rawTicks]
+      .sort((a, b) => {
+        const aLiq = a.liquidityRaw > 0n ? 1 : 0;
+        const bLiq = b.liquidityRaw > 0n ? 1 : 0;
+        if (bLiq !== aLiq) return bLiq - aLiq;
+        return a.kRaw < b.kRaw ? -1 : a.kRaw > b.kRaw ? 1 : 0;
+      })
+      .slice(0, pool.tickCount);
+  }, [rawTicks, pool]);
+
   const tickData: TickData[] | undefined = useMemo(
     () =>
-      rawTicks.length > 0
-        ? rawTicks.map((t) => ({
+      filteredTicks.length > 0
+        ? filteredTicks.map((t) => ({
             kRaw: t.kRaw,
             status: t.status,
             liquidityRaw: t.liquidityRaw,
             reservesRaw: t.reservesRaw,
           }))
         : undefined,
-    [rawTicks],
+    [filteredTicks],
   );
 
   // Suppress quote computation while tick data is still loading for a pool
@@ -156,7 +171,7 @@ export function SwapCard() {
         vaultOut: tokenOut.vault,
         userAtaIn,
         userAtaOut,
-        tickAddresses: rawTicks.map((t) => t.address),
+        tickAddresses: filteredTicks.map((t) => t.address),
       });
 
       setTxResult(sig);
@@ -175,7 +190,7 @@ export function SwapCard() {
     slippageBps,
     execute,
     refreshBalances,
-    rawTicks,
+    filteredTicks,
   ]);
 
   // Connect wallet handler
