@@ -201,7 +201,9 @@ pub fn handler<'info>(
         position: ctx.accounts.position.key(),
         amounts: params.amounts,
         liquidity: result.liquidity.raw,
-        new_radius: result.new_radius.raw,
+        // Use pool.sphere.radius (not result.new_radius) because the Boundary
+        // tick path recomputes the sphere after undoing provisional reserves.
+        new_radius: pool.sphere.radius.raw,
         n_assets: pool.n_assets,
         timestamp: clock.unix_timestamp,
     });
