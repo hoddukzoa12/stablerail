@@ -10,7 +10,7 @@
  *   - Auto-selects existing tick if one matches, otherwise creates new
  */
 
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { Badge } from "../ui/badge";
 import { q6464ToNumber } from "../../lib/format-utils";
 import {
@@ -155,6 +155,12 @@ export function TickSelector({
   const [activePreset, setActivePreset] = useState<PresetLevel | null>(null);
   const [kInput, setKInput] = useState("");
 
+  // Stable ref for onChange to avoid infinite useEffect loops.
+  // Parent may not memoize onChange, so using it directly in deps
+  // would re-trigger the effect on every render → onChange → re-render → loop.
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+
   const radius = q6464ToNumber(pool.radius.raw);
   const n = pool.nAssets;
   const kMin = computeKMin(radius, n);
@@ -183,20 +189,25 @@ export function TickSelector({
     return computeTickPreview(currentK, radius, n);
   }, [currentK, radius, n]);
 
+  // Resolve a k value to either an existing tick address or a new kRaw,
+  // then notify the parent. Extracted to avoid 3x copy-paste of the
+  // findMatchingTick → onChange pattern.
+  function resolveTickForK(k: number | string) {
+    const raw = kToQ6464Raw(k);
+    const match = findMatchingTick(ticks, raw);
+    if (match) {
+      onChangeRef.current({ mode: "concentrated", tickAddress: match.address });
+    } else {
+      onChangeRef.current({ mode: "concentrated", kRaw: raw });
+    }
+  }
+
   // Handle preset selection
   function handlePresetSelect(level: Exclude<PresetLevel, "custom">) {
     setActivePreset(level);
     const k = presetToK(PRESETS[level].kPercent);
     setKInput(k.toFixed(4));
-
-    // Check if an existing tick matches (compare Q64.64 bigint, not float)
-    const raw = kToQ6464Raw(k);
-    const match = findMatchingTick(ticks, raw);
-    if (match) {
-      onChange({ mode: "concentrated", tickAddress: match.address });
-    } else {
-      onChange({ mode: "concentrated", kRaw: raw });
-    }
+    resolveTickForK(k);
   }
 
   // Handle custom input — pass string directly to kToQ6464Raw to avoid
@@ -207,45 +218,41 @@ export function TickSelector({
     setActivePreset("custom");
 
     if (!v || v === "." || parseFloat(v) === 0) {
-      onChange({ mode: "concentrated", kRaw: undefined });
+      onChangeRef.current({ mode: "concentrated", kRaw: undefined });
       return;
     }
 
-    const raw = kToQ6464Raw(v);
-    const match = findMatchingTick(ticks, raw);
-    if (match) {
-      onChange({ mode: "concentrated", tickAddress: match.address });
-    } else {
-      onChange({ mode: "concentrated", kRaw: raw });
-    }
+    resolveTickForK(v);
   }
 
   // Sync preset kRaw with pool radius changes. When the pool refreshes
   // (e.g., after another LP's deposit or a swap), kMin/kMax shift, so the
   // preset's k and kRaw must be recomputed. Without this, the stale kRaw
   // could fall outside the new [k_min, k_max] and fail on-chain.
+  //
+  // Uses onChangeRef (not onChange directly) to avoid infinite loop:
+  // onChange in deps → parent re-render → new onChange ref → effect re-fires.
   useEffect(() => {
     if (
       activePreset &&
       activePreset !== "custom" &&
       selection.mode === "concentrated" &&
-      !selection.tickAddress // only for new tick creation, not existing ticks
+      !selection.tickAddress
     ) {
       const k = presetToK(PRESETS[activePreset].kPercent);
       setKInput(k.toFixed(4));
       const raw = kToQ6464Raw(k);
       const match = findMatchingTick(ticks, raw);
       if (match) {
-        onChange({ mode: "concentrated", tickAddress: match.address });
+        onChangeRef.current({ mode: "concentrated", tickAddress: match.address });
       } else {
-        onChange({ mode: "concentrated", kRaw: raw });
+        onChangeRef.current({ mode: "concentrated", kRaw: raw });
       }
     }
-  }, [presetToK, activePreset, selection.mode, selection.tickAddress, ticks, onChange]);
+  }, [presetToK, activePreset, selection.mode, selection.tickAddress, ticks]);
 
-  // Show all ticks (not just Interior) since add_liquidity now accepts
+  // All ticks shown (not just Interior) since add_liquidity accepts
   // both Interior and Boundary ticks with correct accounting.
-  const availableTicks = ticks;
 
   return (
     <div className="space-y-3">
@@ -295,7 +302,7 @@ export function TickSelector({
               <span className="font-mono text-text-secondary">{fmt(kMax)}</span>
             </span>
             <span className="text-text-tertiary">
-              {availableTicks.length} tick{availableTicks.length !== 1 ? "s" : ""} active
+              {ticks.length} tick{ticks.length !== 1 ? "s" : ""} active
             </span>
           </div>
 
@@ -361,13 +368,13 @@ export function TickSelector({
           </div>
 
           {/* Existing ticks picker — bypasses exact kRaw match issues */}
-          {availableTicks.length > 0 && (
+          {ticks.length > 0 && (
             <div>
               <div className="mb-1.5 text-[11px] font-medium text-text-secondary">
                 Existing Ticks
               </div>
               <div className="max-h-32 space-y-1 overflow-y-auto rounded-lg bg-surface-2 p-2">
-                {availableTicks.map((t) => {
+                {ticks.map((t) => {
                   const isSelected = selection.tickAddress === t.address;
                   return (
                     <button
