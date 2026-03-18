@@ -22,7 +22,7 @@ import { SYSTEM_PROGRAM_ID } from "../lib/ata-utils";
 import { useWriteTransaction, type WriteTransactionResult } from "./useWriteTransaction";
 
 // sha256("global:manage_kyc_entry")[..8]
-const DISCRIMINATOR = new Uint8Array([199, 145, 39, 72, 77, 73, 14, 211]);
+const DISCRIMINATOR = new Uint8Array([177, 145, 128, 217, 214, 243, 153, 144]);
 
 export interface ManageKycEntryParams {
   member: string;
