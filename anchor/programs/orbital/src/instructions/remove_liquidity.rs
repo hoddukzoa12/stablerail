@@ -6,6 +6,7 @@ use crate::errors::OrbitalError;
 use crate::events::LiquidityRemoved;
 use crate::math::FixedPoint;
 use crate::math::sphere::MAX_ASSETS;
+use crate::instructions::tick_helpers::{load_tick_state, save_tick_state};
 use crate::state::{PoolState, PositionState, TickState, TickStatus};
 
 #[derive(AnchorSerialize, AnchorDeserialize)]
@@ -369,25 +370,4 @@ pub fn handler<'info>(
     Ok(())
 }
 
-// ── Tick account helpers ──
-
-fn load_tick_state(acc: &AccountInfo) -> Result<TickState> {
-    // Validate account is owned by this program (prevents forged tick accounts)
-    require!(acc.owner == &crate::ID, OrbitalError::InvalidTickAccount);
-    // Tick account must be writable — save_tick_state will write updated state back.
-    // Check early for a clear error instead of an opaque AccountBorrowFailed at save time.
-    require!(acc.is_writable, OrbitalError::InvalidTickAccount);
-
-    let data = acc.try_borrow_data()?;
-    let mut slice: &[u8] = &data;
-    TickState::try_deserialize(&mut slice)
-        .map_err(|_| OrbitalError::InvalidTickAccount.into())
-}
-
-fn save_tick_state(acc: &AccountInfo, tick: &TickState) -> Result<()> {
-    let mut data = acc.try_borrow_mut_data()?;
-    let mut writer = &mut data[8..];
-    tick.serialize(&mut writer)
-        .map_err(|_| OrbitalError::TickSerializationFailed)?;
-    Ok(())
-}
+// Tick helpers (load_tick_state, save_tick_state) imported from tick_helpers module.

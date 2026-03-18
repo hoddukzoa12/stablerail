@@ -311,7 +311,7 @@ export function computeSwapQuoteWithTicks(
 
     if (crossingK === null) {
       // No crossing → apply full remaining swap
-      applyPartialSwap(simReserves, tokenInIndex, tokenOutIndex, remainingIn, tentativeOut);
+      applyPartialSwap(simReserves, tokenInIndex, tokenOutIndex, remainingIn, tentativeOut, simRadius);
       totalOut = totalOut.add(tentativeOut);
       // Keep simRadius in sync with on-chain recompute_sphere after reserve mutation
       simRadius = recomputeRadius(simReserves, n);
@@ -343,7 +343,7 @@ export function computeSwapQuoteWithTicks(
         } else {
           // Case (b): boundary unreachable but alpha will cross k_cross.
           // Apply full swap, then force-flip tick to match post-swap alpha.
-          applyPartialSwap(simReserves, tokenInIndex, tokenOutIndex, remainingIn, tentativeOut);
+          applyPartialSwap(simReserves, tokenInIndex, tokenOutIndex, remainingIn, tentativeOut, simRadius);
           totalOut = totalOut.add(tentativeOut);
           remainingIn = Q6464.zero();
           // Force-flip tick to match post-swap reality
@@ -352,7 +352,7 @@ export function computeSwapQuoteWithTicks(
         }
       } else if (delta.raw < 0n || delta.raw > remainingIn.raw) {
         // Can't reach boundary or exceeds remaining → apply full swap
-        applyPartialSwap(simReserves, tokenInIndex, tokenOutIndex, remainingIn, tentativeOut);
+        applyPartialSwap(simReserves, tokenInIndex, tokenOutIndex, remainingIn, tentativeOut, simRadius);
         totalOut = totalOut.add(tentativeOut);
         simRadius = recomputeRadius(simReserves, n);
         remainingIn = Q6464.zero();
@@ -365,7 +365,7 @@ export function computeSwapQuoteWithTicks(
           tokenOutIndex,
           delta,
         );
-        applyPartialSwap(simReserves, tokenInIndex, tokenOutIndex, delta, partialOut);
+        applyPartialSwap(simReserves, tokenInIndex, tokenOutIndex, delta, partialOut, simRadius);
         totalOut = totalOut.add(partialOut);
 
         // Flip the crossed tick and redistribute reserves.
@@ -597,7 +597,9 @@ function computeDeltaToBoundary(
 
 /**
  * Apply a partial swap to simulated reserves (mutates in place).
- * Mirrors execute_swap.rs `apply_partial_swap`.
+ * Mirrors execute_swap.rs `apply_partial_swap` including its guards:
+ *   - reserve_in must not exceed radius (ReserveExceedsRadius)
+ *   - reserve_out must not go negative (InsufficientLiquidity)
  * @internal
  */
 function applyPartialSwap(
@@ -606,9 +608,22 @@ function applyPartialSwap(
   tokenOut: number,
   amountIn: Q6464,
   amountOut: Q6464,
+  radius: Q6464,
 ): void {
-  reserves[tokenIn] = reserves[tokenIn].add(amountIn);
-  reserves[tokenOut] = reserves[tokenOut].sub(amountOut);
+  const newIn = reserves[tokenIn].add(amountIn);
+  if (newIn.raw > radius.raw) {
+    throw new Error(
+      `ReserveExceedsRadius: reserve_in (${newIn.raw}) > radius (${radius.raw})`,
+    );
+  }
+  const newOut = reserves[tokenOut].sub(amountOut);
+  if (newOut.raw < 0n) {
+    throw new Error(
+      `InsufficientLiquidity: reserve_out would be negative (${newOut.raw})`,
+    );
+  }
+  reserves[tokenIn] = newIn;
+  reserves[tokenOut] = newOut;
 }
 
 /**

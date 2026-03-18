@@ -10,7 +10,7 @@
  *   - Auto-selects existing tick if one matches, otherwise creates new
  */
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { Badge } from "../ui/badge";
 import { q6464ToNumber } from "../../lib/format-utils";
 import {
@@ -160,10 +160,11 @@ export function TickSelector({
   const kMin = computeKMin(radius, n);
   const kMax = computeKMax(radius, n);
 
-  // Compute k value for a given preset level
-  function presetToK(percent: number): number {
-    return kMin + (kMax - kMin) * percent;
-  }
+  // Compute k value for a given preset level (stable ref for useEffect deps)
+  const presetToK = useCallback(
+    (percent: number): number => kMin + (kMax - kMin) * percent,
+    [kMin, kMax],
+  );
 
   // Get current k value (from preset or custom input)
   const currentK = useMemo(() => {
@@ -240,8 +241,7 @@ export function TickSelector({
         onChange({ mode: "concentrated", kRaw: raw });
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kMin, kMax]);
+  }, [presetToK, activePreset, selection.mode, selection.tickAddress, ticks, onChange]);
 
   // Show all ticks (not just Interior) since add_liquidity now accepts
   // both Interior and Boundary ticks with correct accounting.

@@ -606,11 +606,100 @@ mod tests {
         // current alpha = 300 / √3
         let current_alpha = FixedPoint::from_int(300).checked_div(sqrt_n).unwrap();
         let delta = compute_delta_to_boundary(&sphere, &reserves, 0, 1, current_alpha, 3).unwrap();
-        // Should be approximately zero
-        assert!(
-            delta.raw.abs() < FixedPoint::from_int(1).raw,
-            "delta should be ≈0 when at boundary, got {}",
+        // Must be exactly zero (the zero-root early-return fires)
+        assert_eq!(
+            delta.raw, 0,
+            "delta should be exactly 0 when at boundary, got {}",
             delta
+        );
+    }
+
+    #[test]
+    fn test_delta_zero_root_returns_zero_not_positive() {
+        // Regression: when alpha == k_cross and x_in < x_out, the quadratic
+        // has roots {0, x_out - x_in}. Previously, the strict > 0 selector
+        // skipped the zero root and returned (x_out - x_in), causing
+        // execute_swap to partial-swap instead of entering the flip path.
+        //
+        // Use equal reserves (guaranteed on sphere) swapping token 0→1.
+        // Both reserves are equal, so x_in == x_out and both roots are 0.
+        let sphere = make_sphere(100, 3);
+        let reserves = [
+            FixedPoint::from_int(100),
+            FixedPoint::from_int(100),
+            FixedPoint::from_int(100),
+        ];
+        let sqrt_n = FixedPoint::from_int(3).sqrt().unwrap();
+        let alpha = FixedPoint::from_int(300).checked_div(sqrt_n).unwrap();
+
+        // Swap token 0 → 1 (symmetric case: both roots = 0)
+        let delta = compute_delta_to_boundary(&sphere, &reserves, 0, 1, alpha, 3).unwrap();
+        assert_eq!(delta.raw, 0, "zero root must be returned, got {}", delta);
+
+        // Also test swap 1 → 0 (symmetric, same result)
+        let delta2 = compute_delta_to_boundary(&sphere, &reserves, 1, 0, alpha, 3).unwrap();
+        assert_eq!(delta2.raw, 0, "zero root must be returned for 1→0, got {}", delta2);
+    }
+
+    #[test]
+    fn test_delta_negative_discriminant_returns_zero() {
+        // If the sphere radius changed after tick creation, the tick's k
+        // may be outside the current valid range, causing negative discriminant.
+        let sphere = make_sphere(100, 3);
+        let reserves = [
+            FixedPoint::from_int(100),
+            FixedPoint::from_int(100),
+            FixedPoint::from_int(100),
+        ];
+        // k_cross far outside valid range for this sphere
+        let k_cross = FixedPoint::from_int(500);
+        let delta = compute_delta_to_boundary(&sphere, &reserves, 0, 1, k_cross, 3).unwrap();
+        assert_eq!(
+            delta.raw, 0,
+            "delta should be 0 when boundary is unreachable, got {}",
+            delta
+        );
+    }
+
+    #[test]
+    fn test_find_nearest_tick_at_alpha_boundary() {
+        // Tick at exactly alpha: Interior tick at k == alpha should be detected
+        // as nearest_k_lower (non-strict <= in find_nearest_tick_boundaries).
+        let alpha = FixedPoint::from_int(100);
+        let ticks = vec![
+            (FixedPoint::from_int(100), TickStatus::Interior), // k == alpha
+            (FixedPoint::from_int(110), TickStatus::Boundary),
+        ];
+        let data = find_nearest_tick_boundaries(&ticks, alpha);
+        assert_eq!(
+            data.nearest_k_lower.unwrap().raw,
+            FixedPoint::from_int(100).raw,
+            "Interior tick at k == alpha must be detected as nearest_k_lower"
+        );
+        assert_eq!(
+            data.nearest_k_upper.unwrap().raw,
+            FixedPoint::from_int(110).raw,
+        );
+    }
+
+    #[test]
+    fn test_find_nearest_boundary_at_alpha() {
+        // Boundary tick at k == alpha should be detected as nearest_k_upper
+        // (non-strict >= in find_nearest_tick_boundaries).
+        let alpha = FixedPoint::from_int(100);
+        let ticks = vec![
+            (FixedPoint::from_int(90), TickStatus::Interior),
+            (FixedPoint::from_int(100), TickStatus::Boundary), // k == alpha
+        ];
+        let data = find_nearest_tick_boundaries(&ticks, alpha);
+        assert_eq!(
+            data.nearest_k_lower.unwrap().raw,
+            FixedPoint::from_int(90).raw,
+        );
+        assert_eq!(
+            data.nearest_k_upper.unwrap().raw,
+            FixedPoint::from_int(100).raw,
+            "Boundary tick at k == alpha must be detected as nearest_k_upper"
         );
     }
 }

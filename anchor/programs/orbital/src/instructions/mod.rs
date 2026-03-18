@@ -4,6 +4,7 @@ pub mod add_liquidity;
 pub mod remove_liquidity;
 pub mod create_tick;
 pub mod close_tick;
+pub mod tick_helpers;
 pub mod create_policy;
 pub mod update_policy;
 pub mod manage_allowlist;

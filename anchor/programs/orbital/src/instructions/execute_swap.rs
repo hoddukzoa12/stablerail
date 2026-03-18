@@ -9,6 +9,7 @@ use crate::math::torus::{
     compute_delta_to_boundary, compute_new_alpha, find_nearest_tick_boundaries,
 };
 use crate::math::FixedPoint;
+use crate::instructions::tick_helpers::load_tick_state;
 use crate::state::{PoolState, TickState, TickStatus};
 
 #[derive(AnchorSerialize, AnchorDeserialize)]
@@ -424,18 +425,7 @@ fn load_tick_data(
     Ok(data)
 }
 
-/// Deserialize a TickState from an AccountInfo.
-/// Validates program ownership and Anchor discriminator to prevent forged accounts.
-fn load_tick_state(acc: &AccountInfo) -> Result<TickState> {
-    // Validate account is owned by this program (prevents forged tick accounts)
-    require!(acc.owner == &crate::ID, OrbitalError::InvalidTickAccount);
-
-    let data = acc.try_borrow_data()?;
-    let mut slice: &[u8] = &data;
-    // try_deserialize validates the 8-byte Anchor discriminator
-    TickState::try_deserialize(&mut slice)
-        .map_err(|_| OrbitalError::InvalidTickAccount.into())
-}
+// load_tick_state imported from tick_helpers module.
 
 /// Determine which tick k would be crossed by the alpha movement.
 ///
