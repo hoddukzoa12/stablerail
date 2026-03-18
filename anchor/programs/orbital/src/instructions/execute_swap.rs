@@ -9,7 +9,7 @@ use crate::math::torus::{
     compute_delta_to_boundary, compute_new_alpha, find_nearest_tick_boundaries,
 };
 use crate::math::FixedPoint;
-use crate::instructions::tick_helpers::load_tick_state;
+use crate::instructions::tick_helpers::{load_tick_state_mut, save_tick_state};
 use crate::state::{PoolState, TickStatus};
 
 #[derive(AnchorSerialize, AnchorDeserialize)]
@@ -410,22 +410,20 @@ fn load_tick_data(
     // causing flip_tick to miss the actual nearest boundary tick.
     let mut seen_keys = Vec::with_capacity(tick_accounts.len());
     for acc in tick_accounts {
-        // Tick accounts must be writable — flip_tick serializes updated state back.
-        // Check early to avoid confusing errors after pool reserves are already mutated.
-        require!(acc.is_writable, OrbitalError::InvalidTickAccount);
         require!(
             !seen_keys.contains(acc.key),
             OrbitalError::DuplicateTickAccount
         );
         seen_keys.push(*acc.key);
-        let tick = load_tick_state(acc)?;
+        // load_tick_state_mut validates ownership + writable in one call
+        let tick = load_tick_state_mut(acc)?;
         require!(tick.pool == *pool_key, OrbitalError::TickPoolMismatch);
         data.push((tick.k, tick.status));
     }
     Ok(data)
 }
 
-// load_tick_state imported from tick_helpers module.
+// Tick helpers (load_tick_state_mut, save_tick_state) imported from tick_helpers module.
 
 /// Determine which tick k would be crossed by the alpha movement.
 ///
@@ -500,7 +498,7 @@ fn flip_tick(
     let n = pool.n_assets as usize;
 
     for acc in tick_accounts {
-        let mut tick = load_tick_state(acc)?;
+        let mut tick = load_tick_state_mut(acc)?;
 
         // Exact equality: k_cross comes from find_nearest_tick_boundaries
         // which reads tick.k directly — values are identical bytes.
@@ -554,10 +552,7 @@ fn flip_tick(
             }
 
             // Serialize updated tick back to account
-            let mut data = acc.try_borrow_mut_data()?;
-            let mut writer = &mut data[8..]; // skip 8-byte discriminator
-            tick.serialize(&mut writer)
-                .map_err(|_| OrbitalError::TickSerializationFailed)?;
+            save_tick_state(acc, &tick)?;
 
             return Ok((from_status, *acc.key));
         }
