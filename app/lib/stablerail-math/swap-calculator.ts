@@ -334,8 +334,9 @@ export function computeSwapQuoteWithTicks(
         //       or no positive root) — typically from radius change after
         //       tick creation. In both cases, determine_crossing_k confirmed
         //       that tentative alpha crosses k_cross, so tick must be flipped.
-        const freshAlpha = computeAlphaFromReserves(simReserves, n);
-        if (freshAlpha.raw === crossingK.raw) {
+        // No reserves changed yet (delta==0), so currentAlpha is still fresh.
+        // Avoids redundant sqrt computation from computeAlphaFromReserves.
+        if (currentAlpha.raw === crossingK.raw) {
           // Case (a): alpha exactly at boundary → flip, then retry swap
           simTotalInteriorLiquidity = flipTick(simTicks, crossingK, simReserves, n, simTotalInteriorLiquidity);
           simRadius = recomputeRadius(simReserves, n);
