@@ -8,7 +8,9 @@ import { PolicyForm } from "../components/admin/policy-form";
 import { AllowlistTable } from "../components/admin/allowlist-table";
 import { AllowlistManager } from "../components/admin/allowlist-manager";
 import { KycManagement } from "../components/admin/kyc-management";
+import { KycEntryTable } from "../components/admin/kyc-entry-table";
 import { useManageKycEntry } from "../hooks/useManageKycEntry";
+import { useKycEntries } from "../hooks/useKycEntries";
 import { Shield, AlertTriangle } from "lucide-react";
 
 const PAGE_WRAPPER = "mx-auto max-w-5xl px-4 pt-24";
@@ -38,6 +40,7 @@ export default function AdminPage() {
   const { policy, isLoading: policyLoading, refresh: refreshPolicy } = usePolicy();
   const { addresses, isLoading: allowlistLoading, refresh: refreshAllowlist } = useAllowlist();
   const { execute: executeKyc, isSending: kycSending } = useManageKycEntry();
+  const { entries: kycEntries, isLoading: kycLoading, refresh: refreshKyc } = useKycEntries();
 
   const isConnected = status === "connected" && wallet;
   const walletAddress = wallet?.account.address.toString() ?? "";
@@ -102,10 +105,12 @@ export default function AdminPage() {
             <KycManagement
               onSubmit={async (params) => {
                 await executeKyc(params);
+                refreshKyc();
               }}
               isSending={kycSending}
             />
           )}
+          <KycEntryTable entries={kycEntries} isLoading={kycLoading} />
           {isAuthority && (
             <AllowlistManager onSuccess={refreshAllowlist} />
           )}
