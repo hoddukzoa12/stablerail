@@ -336,6 +336,58 @@ export function TickSelector({
             </div>
           </div>
 
+          {/* Existing ticks picker — bypasses exact kRaw match issues */}
+          {availableTicks.length > 0 && (
+            <div>
+              <div className="mb-1.5 text-[11px] font-medium text-text-secondary">
+                Existing Ticks
+              </div>
+              <div className="max-h-32 space-y-1 overflow-y-auto rounded-lg bg-surface-2 p-2">
+                {availableTicks.map((t) => {
+                  const isSelected = selection.tickAddress === t.address;
+                  return (
+                    <button
+                      key={t.address}
+                      type="button"
+                      onClick={() => {
+                        setActivePreset(null);
+                        setKInput(t.kDisplay.toFixed(4));
+                        onChange({ mode: "concentrated", tickAddress: t.address });
+                      }}
+                      className={`w-full cursor-pointer rounded-md px-2.5 py-1.5 text-left transition-all ${
+                        isSelected
+                          ? "bg-accent-blue/20 ring-1 ring-accent-blue/40"
+                          : "hover:bg-surface-3"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between text-[10px]">
+                        <span className="font-mono text-text-primary">
+                          k = {fmt(t.kDisplay)}
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono text-accent-blue font-semibold">
+                            {fmt(t.capitalEfficiency)}×
+                          </span>
+                          <Badge
+                            variant={t.status === "Interior" ? "success" : "warning"}
+                            className="text-[8px]"
+                          >
+                            {t.status}
+                          </Badge>
+                        </div>
+                      </div>
+                      {t.liquidityDisplay > 0 && (
+                        <div className="mt-0.5 text-[9px] text-text-tertiary">
+                          Liquidity: {fmt(t.liquidityDisplay)} · Depeg: {fmtDepeg(t.depegPrice)}
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Custom divider */}
           <div className="flex items-center gap-2">
             <div className="h-px flex-1 bg-border-default" />
