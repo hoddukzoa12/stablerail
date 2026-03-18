@@ -26,7 +26,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useWalletConnection } from "@solana/react-hooks";
-import { createSolanaRpc, type Address, getAddressEncoder } from "@solana/kit";
+import { createSolanaRpc, type Address, getAddressEncoder, getAddressDecoder } from "@solana/kit";
 import type { Base64EncodedBytes } from "@solana/rpc-types";
 import { PROGRAM_ID } from "../lib/devnet-config";
 import { q6464ToNumber, readI128LE } from "../lib/format-utils";
@@ -40,6 +40,8 @@ const POLL_INTERVAL = 30_000;
 export interface UserPosition {
   /** Position account public key */
   address: string;
+  /** Tick pubkey (Pubkey::default() for full-range positions) */
+  tick: string;
   /** Raw liquidity amount (i128) */
   liquidityRaw: bigint;
   /** Liquidity as a display number (lossy) */
@@ -50,8 +52,13 @@ export interface UserPosition {
   createdAt: number;
 }
 
+const addressDecoder = getAddressDecoder();
+
 function parsePositionAccount(address: string, data: Uint8Array): UserPosition {
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+
+  // tick at offset 41, Pubkey (32 bytes)
+  const tick = addressDecoder.decode(data.slice(41, 73));
 
   // liquidity at offset 105, i128 LE
   const liquidityRaw = readI128LE(view, 105);
@@ -65,6 +72,7 @@ function parsePositionAccount(address: string, data: Uint8Array): UserPosition {
 
   return {
     address,
+    tick,
     liquidityRaw,
     liquidityDisplay,
     feesEarnedRaw,

@@ -1,28 +1,60 @@
 {
   "network": "devnet",
   "rpcUrl": "https://api.devnet.solana.com",
-  "programId": "ATPBdhBzBz25JoQ1faaBd2prdHm93r8VxBjUv17Mfvj1",
+  "programId": "BZDXfJTBpH9ZMo2dz57BFKGNw4FYFCDr1KaUUkFtfRVD",
   "deployer": "3JGigvUgkmoufhW4q35Co2HfpGqVgvQvPn68r1GzDGrs",
-  "pool": "4eEVEEgB6FMDvvRV2AFEUhwgxVnQiXZQuRJ2QxMBNiMW",
-  "policy": "4L8myvA8jcAESo3EqEE7ZbL5C71BYhHNbkBQ793tatMo",
-  "allowlist": "4pwSQoBVrsVxbqnCj3FK9YwfgdR86ig9N12166cTPbP6",
+  "pool": "J7G4gd1VkraYuf3N2M3kkBoCVkKJF1e2HzLJ9c3FLqxz",
+  "policy": "HKZQXex4QHWGQ9XpArMM5KAmykjywDNaiJkQDr2ud9qH",
+  "allowlist": "BxUfW1mjLPwaaBsdMt9R293hQjX3oJxo6KujypwyKX5H",
   "mints": {
     "mock-USDC": "FNbLLK2RcFAgmCu8ssHD4smu9udd9E5d7Cj9VmjnPAzc",
     "mock-USDT": "7pXn9qaBoE9JsQ6DbKGNRfXPRvqd8oi1YfyYtRRgxmwV",
     "mock-PYUSD": "6E15qXfBKzudpA9vSdvQAZRZKEB9zbCfHpKnkDGWmwBD"
   },
   "vaults": {
-    "mock-USDC": "Hkw2svAFz3qyRzGe3bE2fkywnMooNq4hUSTuiZGNbDVu",
-    "mock-USDT": "HQjXDxs8n8STk3a9nacuNcUNidWntV9t1oYF7WHcssZw",
-    "mock-PYUSD": "8fEB6tdRHAQ9F25Q9Ldz6kcRBGQGd98ioWd5JqorXPxQ"
+    "mock-USDC": "DwqipHNiz6JWKMEk7ck9x8JVLpeMHAjtfX7irRagao1e",
+    "mock-USDT": "F3Bc8gYMsKdzms2vArhecrkwdgAtnQkjWo8tjhfpJyak",
+    "mock-PYUSD": "2BdNKhV5zipYLi9SQHwjSvJiAAjJHhmx8ApCVpqxXRWp"
   },
   "params": {
     "nAssets": 3,
     "feeRateBps": 1,
     "decimals": 6,
-    "initialDepositPerAsset": "50000000000000",
+    "initialDepositPerAsset": "1000000000000",
     "maxTradeAmount": "50000000000000",
     "maxDailyVolume": "500000000000000"
   },
-  "generatedAt": "2026-03-13T09:05:06.680Z"
+  "generatedAt": "2026-03-14T14:25:15.040Z",
+  "ticks": [
+    {
+      "index": 5,
+      "address": "G3hsvbjpZiw9LZ8ychppr8g76FT2uMsGN9jb1o4fWRLE",
+      "kRaw": "31970989391411375413764159",
+      "label": "Max efficiency (18×)"
+    },
+    {
+      "index": 6,
+      "address": "AnKNGRT4TqK6s4qxTTLF5P7oHXcus1AoBWLM198LMtRN",
+      "kRaw": "31989436135486842034823231",
+      "label": "Optimal for stablecoins (13×)"
+    },
+    {
+      "index": 7,
+      "address": "FVsCyGdpo1NhdzofFMdPM7hcyyZMGcnZMtjzcxZkf1T6",
+      "kRaw": "32044776367713241889611839",
+      "label": "Safe — covers SVB-level depegs (8×)"
+    },
+    {
+      "index": 8,
+      "address": "21ExjjHqeDjsJZPJMELj1q6XkjxQTfHZxddDFxhKoZJS",
+      "kRaw": "32137010088090574986518591",
+      "label": "Conservative (5.8×)"
+    },
+    {
+      "index": 9,
+      "address": "GaJ4uWbTqY4vS4DdRyBkHAwvCYLGa2zuNwprmG2V6AVY",
+      "kRaw": "32505944969599907407700031",
+      "label": "Wide fallback (3.5×)"
+    }
+  ]
 }

@@ -45,7 +45,8 @@ pub(crate) mod test_helpers {
             total_fees: FixedPoint::zero(),
             created_at: 0,
             position_count: 0,
-            _reserved: [0u8; 104],
+            seed_liquidity: FixedPoint::zero(),
+            _reserved: [0u8; 88],
         }
     }
 

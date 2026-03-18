@@ -50,6 +50,7 @@ impl Tick {
     ///
     /// Computes all derived values: x_min, x_max, depeg_price,
     /// capital_efficiency, boundary_sphere_radius.
+    #[inline(never)]
     pub fn new(k: FixedPoint, sphere: &Sphere) -> Result<Self> {
         let r = sphere.radius;
         let n = sphere.n;
@@ -152,6 +153,7 @@ impl Tick {
     /// -SQRT_TOLERANCE indicate an invalid geometry and return an error.
     const SQRT_TOLERANCE: i64 = 1; // 1.0 in integer units — generous for Q64.64 rounding
 
+    #[inline(never)]
     fn clamped_sqrt(radicand: FixedPoint) -> Result<FixedPoint> {
         if radicand.raw < 0 {
             let neg_tolerance = FixedPoint::from_int(-Self::SQRT_TOLERANCE);
@@ -168,6 +170,7 @@ impl Tick {
     ///
     /// This intermediate value appears in x_min, x_max, and depeg_price.
     /// Pre-computed once in the constructor to avoid redundant sqrt calls.
+    #[inline(never)]
     fn compute_discriminant(
         k: FixedPoint,
         r: FixedPoint,
@@ -195,6 +198,7 @@ impl Tick {
     /// x_min = (k·√n - D) / n
     ///
     /// Minimum reserve any single asset can reach within this tick.
+    #[inline(never)]
     fn compute_x_min_from_parts(
         k: FixedPoint,
         n_fp: FixedPoint,
@@ -209,6 +213,7 @@ impl Tick {
     ///
     /// Maximum reserve any single asset can reach within this tick.
     /// Clamped to r because reserves cannot exceed the sphere radius.
+    #[inline(never)]
     fn compute_x_max_from_parts(
         k: FixedPoint,
         r: FixedPoint,
@@ -231,6 +236,7 @@ impl Tick {
     /// x_depeg and the remaining n-1 assets are each at x_other.
     /// Note: x_other == x_min only when n == 2; for n > 2,
     /// x_other > x_min by D / (n·(n-1)).
+    #[inline(never)]
     fn compute_depeg_price_from_parts(
         x_max: FixedPoint,
         k: FixedPoint,
@@ -257,6 +263,7 @@ impl Tick {
     /// Measures how efficiently LP capital is deployed for a given depeg tolerance.
     /// Higher values mean less capital needed for the same liquidity depth.
     /// x_base = r(1 - 1/√n) = Sphere::equal_price_point()
+    #[inline(never)]
     fn compute_capital_efficiency(
         sphere: &Sphere,
         x_min: FixedPoint,
@@ -276,6 +283,7 @@ impl Tick {
     ///
     /// When this tick transitions to Boundary status, it operates as an
     /// (n-1)-dimensional sphere with this radius in the orthogonal subspace.
+    #[inline(never)]
     fn compute_boundary_radius(
         r: FixedPoint,
         k: FixedPoint,

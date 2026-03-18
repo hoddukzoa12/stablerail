@@ -3,9 +3,10 @@
   "configurations": [
     {
       "name": "nextjs-frontend",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
-      "port": 3000
+      "runtimeExecutable": "/usr/local/bin/node",
+      "runtimeArgs": ["node_modules/.bin/next", "dev", "--webpack"],
+      "port": 3000,
+      "autoPort": true
     }
   ]
 }

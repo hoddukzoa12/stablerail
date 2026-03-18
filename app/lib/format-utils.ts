@@ -19,11 +19,24 @@ export function concatBytes(...parts: Uint8Array[]): Uint8Array {
   return result;
 }
 
-/** Read a little-endian i128 from a DataView as a BigInt. */
+/**
+ * Read a little-endian i128 from a DataView as a BigInt.
+ *
+ * Both words are read as unsigned to avoid sign-extension artifacts when
+ * the high word is negative. The 128-bit unsigned result is then converted
+ * to signed i128 via two's complement if bit 127 is set.
+ *
+ * Previous implementation used getBigInt64 for hi, which sign-extends from
+ * 64 bits to BigInt's arbitrary precision — the subsequent `| lo` then
+ * clobbers the lower bits for negative hi values, producing wrong results.
+ */
 export function readI128LE(view: DataView, offset: number): bigint {
   const lo = view.getBigUint64(offset, true);
-  const hi = view.getBigInt64(offset + 8, true);
-  return (hi << 64n) | lo;
+  const hi = view.getBigUint64(offset + 8, true);
+  const raw = (hi << 64n) | lo;
+  // Sign-extend from 128 bits (two's complement)
+  const I128_SIGN_BIT = 1n << 127n;
+  return raw >= I128_SIGN_BIT ? raw - (1n << 128n) : raw;
 }
 
 /** Decode RPC account data (base64 tuple or raw Uint8Array) to bytes. */

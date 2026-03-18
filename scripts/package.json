@@ -5,15 +5,18 @@
   "type": "module",
   "description": "Devnet deploy and bootstrap scripts for Orbital Settlement Protocol",
   "scripts": {
-    "bootstrap": "tsx bootstrap-pool.ts"
+    "bootstrap": "tsx bootstrap-pool.ts",
+    "create-ticks": "tsx create-demo-ticks.ts",
+    "create-ticks-with-liq": "tsx create-demo-ticks.ts --with-liquidity"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.31.1",
-    "@solana/spl-token": "^0.4.9",
-    "@solana/web3.js": "^1.95.8"
+    "@solana/spl-token": "^0.3.11",
+    "@solana/web3.js": "^1.95.8",
+    "bn.js": "^5.2.3"
   },
   "devDependencies": {
-    "tsx": "^4.19.2",
-    "@types/node": "^20"
+    "@types/node": "^20.19.37",
+    "tsx": "^4.21.0"
   }
 }

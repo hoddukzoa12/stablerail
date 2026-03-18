@@ -17,4 +17,9 @@ export const ALLOWLIST_PDA: string = config.allowlist;
 export const MINTS: Record<string, string> = Object.freeze(config.mints);
 export const VAULTS: Record<string, string> = Object.freeze(config.vaults);
 
+/** Tick account addresses — required as remaining_accounts for swaps */
+export const TICK_ADDRESSES: string[] = (config.ticks ?? []).map(
+  (t: { address: string }) => t.address,
+);
+
 export const DEVNET_CONFIG = Object.freeze(config);

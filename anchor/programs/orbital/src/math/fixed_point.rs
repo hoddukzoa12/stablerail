@@ -186,6 +186,7 @@ impl FixedPoint {
     /// Uses hi/lo splitting to avoid 256-bit intermediate overflow.
     /// (a_hi*2^64 + a_lo) * (b_hi*2^64 + b_lo) >> 64
     ///   = a_hi*b_hi*2^64 + a_hi*b_lo + a_lo*b_hi + (a_lo*b_lo >> 64)
+    #[inline(never)]
     pub fn checked_mul(self, rhs: Self) -> Result<Self> {
         let a = self.raw;
         let b = rhs.raw;
@@ -236,6 +237,7 @@ impl FixedPoint {
     ///   result = (a_raw / b_raw) << 64 + ((a_raw % b_raw) << 64) / b_raw
     /// The remainder term uses iterative long-division to avoid u128 overflow
     /// when remainder >= 2^64.
+    #[inline(never)]
     pub fn checked_div(self, rhs: Self) -> Result<Self> {
         require!(
             rhs.raw != 0,
@@ -319,6 +321,7 @@ impl FixedPoint {
     ///
     /// Uses the identity: sqrt(x_raw * 2^64) = isqrt(x_raw) * 2^32
     /// This avoids the intermediate overflow of `x_raw << 64`.
+    #[inline(never)]
     pub fn sqrt(self) -> Result<Self> {
         require!(
             self.raw >= 0,

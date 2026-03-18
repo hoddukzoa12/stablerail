@@ -3,14 +3,25 @@
 /**
  * Hook: compute off-chain swap quote with debounced input.
  *
- * Calls computeSwapQuote() from the stablerail-math SDK whenever
- * pool state or input amount changes. Debounces by 300ms to avoid
- * excessive computation during typing.
+ * When tick data is provided, uses `computeSwapQuoteWithTicks()` to
+ * simulate the on-chain trade segmentation loop (alpha-based crossing
+ * detection, delta-to-boundary quadratic solver, tick flipping).
+ * Falls back to single-sphere `computeSwapQuote()` when no ticks.
+ *
+ * Debounces by 300ms to avoid excessive computation during typing.
  */
 
 import { useState, useEffect, useRef } from "react";
-import { Q6464, computeSwapQuote } from "../lib/stablerail-math";
-import type { PoolState, SwapQuote } from "../lib/stablerail-math";
+import {
+  Q6464,
+  computeSwapQuoteWithTicks,
+  parseTokenAmount,
+} from "../lib/stablerail-math";
+import type {
+  PoolState,
+  SwapQuote,
+  TickData,
+} from "../lib/stablerail-math";
 
 /** Debounce delay for amount input changes */
 const DEBOUNCE_MS = 300;
@@ -29,6 +40,7 @@ interface UseSwapQuoteResult {
  * @param tokenOutIndex - Index of the output token in the pool
  * @param amountIn - User-entered amount string (e.g. "100.5")
  * @param decimals - Decimal places for the input token
+ * @param ticks - Optional tick data for concentrated liquidity routing
  */
 export function useSwapQuote(
   pool: PoolState | null,
@@ -36,11 +48,16 @@ export function useSwapQuote(
   tokenOutIndex: number,
   amountIn: string,
   decimals: number,
+  ticks?: TickData[],
 ): UseSwapQuoteResult {
   const [quote, setQuote] = useState<SwapQuote | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isComputing, setIsComputing] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Stable reference for ticks to avoid re-triggering on every render
+  const ticksRef = useRef<TickData[] | undefined>(ticks);
+  ticksRef.current = ticks;
 
   useEffect(() => {
     // Clear previous timer
@@ -55,8 +72,19 @@ export function useSwapQuote(
       return;
     }
 
-    const parsedAmount = parseFloat(trimmed);
-    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+    // Validate format without converting through parseFloat (which
+    // destroys precision for very small amounts via scientific notation
+    // e.g. "0.000001" → 1e-7 → String() → "1e-7" → split(".") breaks).
+    if (!/^\d+\.?\d*$/.test(trimmed)) {
+      setQuote(null);
+      setError(null);
+      setIsComputing(false);
+      return;
+    }
+
+    // Quick positivity check (parseTokenAmount handles the actual conversion)
+    const baseUnitsCheck = parseTokenAmount(trimmed, decimals);
+    if (baseUnitsCheck <= 0n) {
       setQuote(null);
       setError(null);
       setIsComputing(false);
@@ -67,14 +95,19 @@ export function useSwapQuote(
 
     timerRef.current = setTimeout(() => {
       try {
-        // Convert human-readable amount to base units then to Q64.64
-        const baseUnits = BigInt(
-          Math.floor(parsedAmount * 10 ** decimals),
-        );
+        // Convert human-readable amount to base units then to Q64.64.
+        // Pass the original trimmed string directly — never round-trip
+        // through parseFloat which loses precision for small/large amounts.
+        const baseUnits = parseTokenAmount(trimmed, decimals);
         const amountQ = Q6464.fromTokenAmount(baseUnits, decimals);
 
-        const result = computeSwapQuote(
+        // Always use tick-aware path — it handles the tickCount == 0
+        // fallback internally and rejects when ticks are missing for
+        // pools that have them (prevents misleading single-sphere quotes).
+        const currentTicks = ticksRef.current ?? [];
+        const result = computeSwapQuoteWithTicks(
           pool,
+          currentTicks,
           tokenInIndex,
           tokenOutIndex,
           amountQ,
@@ -102,6 +135,11 @@ export function useSwapQuote(
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
+    // Note: `ticks` is intentionally excluded from the dependency array.
+    // ticksRef.current always holds the latest value (updated on line 60),
+    // and including `ticks` here causes spurious debounce resets on every
+    // tick poll cycle since rawTicks gets a new array reference each time.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pool, tokenInIndex, tokenOutIndex, amountIn, decimals]);
 
   return { quote, error, isComputing };

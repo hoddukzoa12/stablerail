@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { useWalletConnection } from "@solana/react-hooks";
 import { type Address } from "@solana/kit";
 import { Card } from "../ui/card";
@@ -12,9 +12,12 @@ import { SwapButton } from "./swap-button";
 import { TOKENS, type TokenInfo } from "../../lib/tokens";
 import { deriveAta } from "../../lib/ata-utils";
 import { usePoolState } from "../../hooks/usePoolState";
+import { usePoolTicks } from "../../hooks/usePoolTicks";
 import { useSwapQuote } from "../../hooks/useSwapQuote";
 import { useTokenBalances } from "../../hooks/useTokenBalances";
 import { useExecuteSwap } from "../../hooks/useExecuteSwap";
+import { parseTokenAmount } from "../../lib/stablerail-math";
+import type { TickData } from "../../lib/stablerail-math";
 
 /** Default slippage: 0.5% = 50 bps */
 const DEFAULT_SLIPPAGE_BPS = 50;
@@ -47,13 +50,37 @@ export function SwapCard() {
 
   // Data hooks
   const { pool, isLoading: poolLoading } = usePoolState();
+  const { ticks: rawTicks, isLoading: ticksLoading } = usePoolTicks(pool?.nAssets ?? 3);
   const { balances, refresh: refreshBalances } = useTokenBalances();
+
+  // Convert TickInfo[] from usePoolTicks to TickData[] for the swap calculator.
+  // Memoized to avoid creating new array references on every render.
+  const tickData: TickData[] | undefined = useMemo(
+    () =>
+      rawTicks.length > 0
+        ? rawTicks.map((t) => ({
+            kRaw: t.kRaw,
+            status: t.status,
+            liquidityRaw: t.liquidityRaw,
+            reservesRaw: t.reservesRaw,
+          }))
+        : undefined,
+    [rawTicks],
+  );
+
+  // Suppress quote computation while tick data is still loading for a pool
+  // that has ticks. Without this, computeSwapQuoteWithTicks throws a
+  // "tick data is empty" error that flashes to the user on every page load.
+  const poolHasTicks = pool && pool.tickCount > 0;
+  const ticksReady = !poolHasTicks || !ticksLoading;
+
   const { quote, error: quoteError, isComputing } = useSwapQuote(
-    pool,
+    ticksReady ? pool : null,
     tokenIn.index,
     tokenOut.index,
     amountIn,
     tokenIn.decimals,
+    tickData,
   );
   const { execute, isSending } = useExecuteSwap();
 
@@ -117,9 +144,7 @@ export function SwapCard() {
       const minAmountOut =
         (quote.amountOutU64 * slippageMultiplier) / 10000n;
 
-      const inputBaseUnits = BigInt(
-        Math.floor(parseFloat(amountIn) * 10 ** tokenIn.decimals),
-      );
+      const inputBaseUnits = parseTokenAmount(amountIn, tokenIn.decimals);
 
       const sig = await execute({
         tokenInIndex: tokenIn.index,
@@ -131,6 +156,7 @@ export function SwapCard() {
         vaultOut: tokenOut.vault,
         userAtaIn,
         userAtaOut,
+        tickAddresses: rawTicks.map((t) => t.address),
       });
 
       setTxResult(sig);
@@ -149,6 +175,7 @@ export function SwapCard() {
     slippageBps,
     execute,
     refreshBalances,
+    rawTicks,
   ]);
 
   // Connect wallet handler

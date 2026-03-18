@@ -152,6 +152,190 @@ pub fn compute_new_alpha(
 }
 
 // ══════════════════════════════════════════════════════════════
+// Consolidated tick data for trade segmentation
+// ══════════════════════════════════════════════════════════════
+
+use crate::state::TickStatus;
+
+/// Consolidated view of active tick boundaries near the current alpha.
+///
+/// Used by the trade segmentation loop in `execute_swap` to determine
+/// if a swap will cross a tick boundary and which tick's k to target.
+#[derive(Clone, Copy, Debug)]
+pub struct ConsolidatedTickData {
+    /// Whether any boundary tick exists in the pool
+    pub has_boundary: bool,
+    /// Nearest Interior tick k below current alpha (alpha decreasing direction)
+    /// When alpha decreases past this k, that tick transitions Interior → Boundary
+    pub nearest_k_lower: Option<FixedPoint>,
+    /// Nearest Boundary tick k above current alpha (alpha increasing direction)
+    /// When alpha increases past this k, that Boundary tick transitions
+    /// Boundary → Interior
+    pub nearest_k_upper: Option<FixedPoint>,
+}
+
+/// Find the nearest tick boundaries relative to the current alpha.
+///
+/// Scans all ticks and finds:
+///   - nearest_k_lower: largest Interior tick k that is < current alpha (strict)
+///   - nearest_k_upper: smallest Boundary tick k that is > current alpha (strict)
+///
+/// This maps to the reference implementation's `_getConsolidatedTickData()`.
+pub fn find_nearest_tick_boundaries(
+    ticks: &[(FixedPoint, TickStatus)],
+    current_alpha: FixedPoint,
+) -> ConsolidatedTickData {
+    let mut has_boundary = false;
+    let mut nearest_k_lower: Option<FixedPoint> = None;
+    let mut nearest_k_upper: Option<FixedPoint> = None;
+
+    for &(k, status) in ticks {
+        match status {
+            TickStatus::Interior => {
+                // Interior ticks at or below alpha: potential crossing on alpha decrease.
+                // Non-strict `<=` is required because create_tick classifies k <= alpha
+                // as Interior — a tick at k == alpha must be detected for crossing when
+                // alpha subsequently decreases. Without this, the tick remains Interior
+                // after alpha moves below k, desynchronizing status from the active range.
+                // (Safe: determine_crossing_k only triggers on alpha decrease, so
+                // a tick at k == alpha won't spuriously fire on alpha-increasing swaps.)
+                if k.raw <= current_alpha.raw {
+                    match nearest_k_lower {
+                        None => nearest_k_lower = Some(k),
+                        Some(prev) if k.raw > prev.raw => nearest_k_lower = Some(k),
+                        _ => {}
+                    }
+                }
+            }
+            TickStatus::Boundary => {
+                has_boundary = true;
+                // Boundary ticks at or above alpha: potential crossing on alpha increase.
+                // Non-strict `>=` is required because create_tick classifies k >= alpha
+                // as Boundary — a subsequent alpha-increasing swap must detect the crossing.
+                if k.raw >= current_alpha.raw {
+                    match nearest_k_upper {
+                        None => nearest_k_upper = Some(k),
+                        Some(prev) if k.raw < prev.raw => nearest_k_upper = Some(k),
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+
+    ConsolidatedTickData {
+        has_boundary,
+        nearest_k_lower,
+        nearest_k_upper,
+    }
+}
+
+// ══════════════════════════════════════════════════════════════
+// Delta-to-boundary solver (quadratic closed-form)
+// ══════════════════════════════════════════════════════════════
+
+/// Compute the amount of token_in needed to reach a tick boundary at k_cross.
+///
+/// Solves the quadratic equation arising from two constraints:
+///   1. Sphere invariant: Σ(r - xᵢ)² = r²
+///   2. Alpha target: new_alpha = (Σxᵢ + delta_in - delta_out) / √n = k_cross
+///
+/// Derivation:
+///   Let a = r - x_in, b = r - x_out, C = running_sum - k_cross·√n
+///   Then delta_out = delta_in + C  (from alpha constraint)
+///   Substituting into sphere invariant:
+///     (a - d)² + (b + d + C)² = a² + b²
+///   Expanding: 2d² + 2(b+C-a)d + (2bC + C²) = 0
+///
+/// Returns the positive root (delta_in to reach boundary).
+/// Returns zero if the boundary is already reached or unreachable.
+pub fn compute_delta_to_boundary(
+    sphere: &Sphere,
+    reserves: &[FixedPoint],
+    token_in: usize,
+    token_out: usize,
+    k_cross: FixedPoint,
+    n: u8,
+) -> Result<FixedPoint> {
+    let r = sphere.radius;
+    let n_fp = FixedPoint::from_int(n as i64);
+    let sqrt_n = n_fp.sqrt()?;
+
+    // a = r - x_in, b = r - x_out
+    let a = r.checked_sub(reserves[token_in])?;
+    let b = r.checked_sub(reserves[token_out])?;
+
+    // running_sum = Σ x_i
+    let mut running_sum = FixedPoint::zero();
+    for i in 0..n as usize {
+        running_sum = running_sum.checked_add(reserves[i])?;
+    }
+
+    // C = running_sum - k_cross · √n
+    let target_sum = k_cross.checked_mul(sqrt_n)?;
+    let c = running_sum.checked_sub(target_sum)?;
+
+    // Quadratic: 2d² + 2(b+C-a)d + (2bC + C²) = 0
+    // Coefficients (divided by 2):
+    //   A_coeff = 1  (after dividing by 2)
+    //   B_coeff = b + C - a
+    //   C_coeff = (2bC + C²) / 2 = C(2b + C) / 2
+    let b_coeff = b.checked_add(c)?.checked_sub(a)?;
+    let two = FixedPoint::from_int(2);
+    let c_coeff_numer = c.checked_mul(two.checked_mul(b)?.checked_add(c)?)?;
+    let c_coeff = c_coeff_numer.checked_div(two)?;
+
+    // Discriminant: B² - 4AC = b_coeff² - 4·1·c_coeff = b_coeff² - 4·c_coeff
+    let discriminant = b_coeff.squared()?.checked_sub(
+        FixedPoint::from_int(4).checked_mul(c_coeff)?,
+    )?;
+
+    // If discriminant < 0, boundary is geometrically unreachable from the
+    // current sphere state. This can occur if the sphere radius changed
+    // (e.g., after liquidity additions) since the tick was created.
+    if discriminant.raw < 0 {
+        msg!("compute_delta_to_boundary: negative discriminant ({}) for k_cross={}, boundary unreachable", discriminant.raw, k_cross.raw);
+        return Ok(FixedPoint::zero());
+    }
+
+    let sqrt_disc = discriminant.sqrt()?;
+
+    // Two roots: d = (-b_coeff ± sqrt_disc) / 2
+    let neg_b = FixedPoint::zero().checked_sub(b_coeff)?;
+    let root1 = neg_b.checked_add(sqrt_disc)?.checked_div(two)?;
+    let root2 = neg_b.checked_sub(sqrt_disc)?.checked_div(two)?;
+
+    // If zero is a valid root, the pool is already at k_cross — return 0
+    // so execute_swap enters the `delta == 0` flip path. Without this,
+    // the selector would skip the zero root and return the other positive
+    // root, causing execute_swap to do a partial swap instead of flipping.
+    // (Occurs when alpha == k_cross: C = 0 → quadratic = d(d + B) = 0.)
+    if root1.raw == 0 || root2.raw == 0 {
+        return Ok(FixedPoint::zero());
+    }
+
+    // Select the smallest positive root
+    let result = match (root1.raw > 0, root2.raw > 0) {
+        (true, true) => {
+            if root1.raw <= root2.raw {
+                root1
+            } else {
+                root2
+            }
+        }
+        (true, false) => root1,
+        (false, true) => root2,
+        (false, false) => {
+            // No positive root — already past boundary or boundary unreachable
+            msg!("compute_delta_to_boundary: no positive root for k_cross={}, roots=({}, {})", k_cross.raw, root1.raw, root2.raw);
+            FixedPoint::zero()
+        }
+    };
+
+    Ok(result)
+}
+
+// ══════════════════════════════════════════════════════════════
 // Tests
 // ══════════════════════════════════════════════════════════════
 
@@ -337,5 +521,185 @@ mod tests {
         )
         .unwrap();
         assert!(new_alpha.raw > old_alpha.raw);
+    }
+
+    // ── find_nearest_tick_boundaries ──
+
+    #[test]
+    fn test_find_nearest_empty_ticks() {
+        let data = find_nearest_tick_boundaries(&[], FixedPoint::from_int(100));
+        assert!(!data.has_boundary);
+        assert!(data.nearest_k_lower.is_none());
+        assert!(data.nearest_k_upper.is_none());
+    }
+
+    #[test]
+    fn test_find_nearest_interior_below() {
+        let ticks = vec![
+            (FixedPoint::from_int(90), TickStatus::Interior),
+            (FixedPoint::from_int(80), TickStatus::Interior),
+        ];
+        let data = find_nearest_tick_boundaries(&ticks, FixedPoint::from_int(100));
+        assert_eq!(data.nearest_k_lower.unwrap().raw, FixedPoint::from_int(90).raw);
+        assert!(data.nearest_k_upper.is_none());
+    }
+
+    #[test]
+    fn test_find_nearest_boundary_above() {
+        let ticks = vec![
+            (FixedPoint::from_int(110), TickStatus::Boundary),
+            (FixedPoint::from_int(120), TickStatus::Boundary),
+        ];
+        let data = find_nearest_tick_boundaries(&ticks, FixedPoint::from_int(100));
+        assert!(data.has_boundary);
+        assert!(data.nearest_k_lower.is_none());
+        assert_eq!(data.nearest_k_upper.unwrap().raw, FixedPoint::from_int(110).raw);
+    }
+
+    #[test]
+    fn test_find_nearest_mixed_ticks() {
+        let ticks = vec![
+            (FixedPoint::from_int(85), TickStatus::Interior),
+            (FixedPoint::from_int(95), TickStatus::Interior),
+            (FixedPoint::from_int(105), TickStatus::Boundary),
+            (FixedPoint::from_int(115), TickStatus::Boundary),
+        ];
+        let data = find_nearest_tick_boundaries(&ticks, FixedPoint::from_int(100));
+        assert!(data.has_boundary);
+        assert_eq!(data.nearest_k_lower.unwrap().raw, FixedPoint::from_int(95).raw);
+        assert_eq!(data.nearest_k_upper.unwrap().raw, FixedPoint::from_int(105).raw);
+    }
+
+    // ── compute_delta_to_boundary ──
+
+    #[test]
+    fn test_delta_to_boundary_returns_positive() {
+        // 3-asset pool with asymmetric reserves: [10, 56, 42]
+        // r = 100, a = r-x_in = 90, b = r-x_out = 44 (asymmetric → positive discriminant)
+        // sum = 108, alpha = 108/√3 ≈ 62.35, k_cross = 60 (below alpha → reachable)
+        //
+        // Positive discriminant requires (a-b)² > C·(2(a+b) + C).
+        // With a=90, b=44: (a-b)²=2116 > C·(2·134 + C) ≈ 1093 ✓
+        let sphere = make_sphere(100, 3);
+        let reserves = [
+            FixedPoint::from_int(10),
+            FixedPoint::from_int(56),
+            FixedPoint::from_int(42),
+        ];
+        let k_cross = FixedPoint::from_int(60);
+        let delta = compute_delta_to_boundary(&sphere, &reserves, 0, 1, k_cross, 3).unwrap();
+        // Should be positive (some amount needed to reach boundary)
+        assert!(delta.raw > 0, "delta should be positive, got {}", delta);
+    }
+
+    #[test]
+    fn test_delta_to_boundary_zero_when_at_boundary() {
+        // When current alpha is already at k_cross, delta should be ~0
+        let sphere = make_sphere(100, 3);
+        let reserves = [
+            FixedPoint::from_int(100),
+            FixedPoint::from_int(100),
+            FixedPoint::from_int(100),
+        ];
+        let n_fp = FixedPoint::from_int(3);
+        let sqrt_n = n_fp.sqrt().unwrap();
+        // current alpha = 300 / √3
+        let current_alpha = FixedPoint::from_int(300).checked_div(sqrt_n).unwrap();
+        let delta = compute_delta_to_boundary(&sphere, &reserves, 0, 1, current_alpha, 3).unwrap();
+        // Must be exactly zero (the zero-root early-return fires)
+        assert_eq!(
+            delta.raw, 0,
+            "delta should be exactly 0 when at boundary, got {}",
+            delta
+        );
+    }
+
+    #[test]
+    fn test_delta_zero_root_returns_zero_not_positive() {
+        // Regression: when alpha == k_cross and x_in < x_out, the quadratic
+        // has roots {0, x_out - x_in}. Previously, the strict > 0 selector
+        // skipped the zero root and returned (x_out - x_in), causing
+        // execute_swap to partial-swap instead of entering the flip path.
+        //
+        // Use equal reserves (guaranteed on sphere) swapping token 0→1.
+        // Both reserves are equal, so x_in == x_out and both roots are 0.
+        let sphere = make_sphere(100, 3);
+        let reserves = [
+            FixedPoint::from_int(100),
+            FixedPoint::from_int(100),
+            FixedPoint::from_int(100),
+        ];
+        let sqrt_n = FixedPoint::from_int(3).sqrt().unwrap();
+        let alpha = FixedPoint::from_int(300).checked_div(sqrt_n).unwrap();
+
+        // Swap token 0 → 1 (symmetric case: both roots = 0)
+        let delta = compute_delta_to_boundary(&sphere, &reserves, 0, 1, alpha, 3).unwrap();
+        assert_eq!(delta.raw, 0, "zero root must be returned, got {}", delta);
+
+        // Also test swap 1 → 0 (symmetric, same result)
+        let delta2 = compute_delta_to_boundary(&sphere, &reserves, 1, 0, alpha, 3).unwrap();
+        assert_eq!(delta2.raw, 0, "zero root must be returned for 1→0, got {}", delta2);
+    }
+
+    #[test]
+    fn test_delta_negative_discriminant_returns_zero() {
+        // If the sphere radius changed after tick creation, the tick's k
+        // may be outside the current valid range, causing negative discriminant.
+        let sphere = make_sphere(100, 3);
+        let reserves = [
+            FixedPoint::from_int(100),
+            FixedPoint::from_int(100),
+            FixedPoint::from_int(100),
+        ];
+        // k_cross far outside valid range for this sphere
+        let k_cross = FixedPoint::from_int(500);
+        let delta = compute_delta_to_boundary(&sphere, &reserves, 0, 1, k_cross, 3).unwrap();
+        assert_eq!(
+            delta.raw, 0,
+            "delta should be 0 when boundary is unreachable, got {}",
+            delta
+        );
+    }
+
+    #[test]
+    fn test_find_nearest_tick_at_alpha_boundary() {
+        // Tick at exactly alpha: Interior tick at k == alpha should be detected
+        // as nearest_k_lower (non-strict <= in find_nearest_tick_boundaries).
+        let alpha = FixedPoint::from_int(100);
+        let ticks = vec![
+            (FixedPoint::from_int(100), TickStatus::Interior), // k == alpha
+            (FixedPoint::from_int(110), TickStatus::Boundary),
+        ];
+        let data = find_nearest_tick_boundaries(&ticks, alpha);
+        assert_eq!(
+            data.nearest_k_lower.unwrap().raw,
+            FixedPoint::from_int(100).raw,
+            "Interior tick at k == alpha must be detected as nearest_k_lower"
+        );
+        assert_eq!(
+            data.nearest_k_upper.unwrap().raw,
+            FixedPoint::from_int(110).raw,
+        );
+    }
+
+    #[test]
+    fn test_find_nearest_boundary_at_alpha() {
+        // Boundary tick at k == alpha should be detected as nearest_k_upper
+        // (non-strict >= in find_nearest_tick_boundaries).
+        let alpha = FixedPoint::from_int(100);
+        let ticks = vec![
+            (FixedPoint::from_int(90), TickStatus::Interior),
+            (FixedPoint::from_int(100), TickStatus::Boundary), // k == alpha
+        ];
+        let data = find_nearest_tick_boundaries(&ticks, alpha);
+        assert_eq!(
+            data.nearest_k_lower.unwrap().raw,
+            FixedPoint::from_int(90).raw,
+        );
+        assert_eq!(
+            data.nearest_k_upper.unwrap().raw,
+            FixedPoint::from_int(100).raw,
+            "Boundary tick at k == alpha must be detected as nearest_k_upper"
+        );
     }
 }

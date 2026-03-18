@@ -34,6 +34,7 @@
 import { Q6464 } from "./stablerail-math";
 import type { PoolState } from "./stablerail-math";
 import { readI128LE } from "./format-utils";
+import { getAddressDecoder } from "@solana/kit";
 
 /** Anchor discriminator for PoolState: sha256("account:PoolState")[..8] */
 const POOL_DISCRIMINATOR = new Uint8Array([247, 237, 227, 245, 215, 195, 222, 70]);
@@ -64,6 +65,9 @@ export function deserializePoolState(data: Uint8Array): PoolState {
 
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
 
+  // authority at offset 9, Pubkey (32 bytes)
+  const authority = getAddressDecoder().decode(data.slice(9, 41));
+
   // sphere.radius at offset 41
   const radiusRaw = readI128LE(view, 41);
   const radius = new Q6464(radiusRaw);
@@ -90,6 +94,9 @@ export function deserializePoolState(data: Uint8Array): PoolState {
   // total_interior_liquidity at offset 709 (i128 LE)
   const totalInteriorLiquidity = new Q6464(readI128LE(view, 709));
 
+  // tick_count at offset 773 (u16 LE)
+  const tickCount = view.getUint16(773, true);
+
   // is_active at offset 775 (bool)
   const isActive = data[775] !== 0;
 
@@ -113,5 +120,7 @@ export function deserializePoolState(data: Uint8Array): PoolState {
     positionCount,
     isActive,
     totalInteriorLiquidity,
+    tickCount,
+    authority,
   };
 }

@@ -10,6 +10,9 @@ import {
   explorerUrl,
   computePartialLiquidity,
 } from "../../lib/format-utils";
+
+/** Solana's Pubkey::default() — 32 zero bytes as base58 */
+const DEFAULT_PUBKEY = "11111111111111111111111111111111";
 import { useRemoveLiquidity } from "../../hooks/useRemoveLiquidity";
 import type { UserPosition } from "../../hooks/useUserPositions";
 import type { Transaction } from "../../hooks/useTransactionHistory";
@@ -90,6 +93,7 @@ export function UserPositions({
         const sig = await execute({
           positionAddress: pos.address,
           liquidityRaw: computePartialLiquidity(pos.liquidityRaw, aggregatePercent),
+          tickAddress: pos.tick !== DEFAULT_PUBKEY ? pos.tick : undefined,
         });
         lastSig = sig;
       } catch {
@@ -115,6 +119,7 @@ export function UserPositions({
           position.liquidityRaw,
           getPercent(position.address),
         ),
+        tickAddress: position.tick !== DEFAULT_PUBKEY ? position.tick : undefined,
       });
       setTxResult(sig);
       onRemoveSuccess();

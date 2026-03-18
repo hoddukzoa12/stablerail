@@ -59,7 +59,10 @@ export function useWriteTransaction<P>(
 
       try {
         const sig = await send({ instructions: [instruction] });
-        const sigStr = sig ? String(sig) : "";
+        if (!sig) {
+          throw new Error("Wallet adapter did not return a transaction signature");
+        }
+        const sigStr = String(sig);
         setSignature(sigStr);
         return sigStr;
       } catch (err) {

@@ -1,11 +1,13 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Token};
 
+use crate::domain::core::{recompute_sphere, update_caches};
 use crate::domain::liquidity::add_liquidity_to_pool;
 use crate::errors::OrbitalError;
 use crate::events::LiquidityAdded;
 use crate::math::{sphere::MAX_ASSETS, FixedPoint};
-use crate::state::{PoolState, PositionState};
+use crate::instructions::tick_helpers::{load_tick_state_mut, save_tick_state};
+use crate::state::{PoolState, PositionState, TickStatus};
 
 #[derive(AnchorSerialize, AnchorDeserialize)]
 pub struct AddLiquidityParams {
@@ -16,9 +18,14 @@ pub struct AddLiquidityParams {
 
 /// Accounts for `add_liquidity`.
 ///
-/// `remaining_accounts` layout (2 × n_assets):
+/// `remaining_accounts` layout:
 ///   [0..n)  = vault token accounts  (writable, receive deposits)
 ///   [n..2n) = provider ATAs         (writable, deposit source)
+///   [2n]    = optional tick account (writable, for concentrated liquidity)
+///
+/// When no tick account is provided (len == 2*n), position is full-range.
+/// When tick account is provided (len == 2*n + 1), liquidity is concentrated
+/// within the tick's spherical cap bounds.
 #[derive(Accounts)]
 #[instruction(params: AddLiquidityParams)]
 pub struct AddLiquidity<'info> {
@@ -61,14 +68,13 @@ pub fn handler<'info>(
     require!(pool.is_active, OrbitalError::PoolNotActive);
 
     let remaining = &ctx.remaining_accounts;
+    let has_tick = remaining.len() == 2 * n + 1;
     require!(
-        remaining.len() == 2 * n,
+        remaining.len() == 2 * n || has_tick,
         OrbitalError::InvalidRemainingAccounts
     );
 
     // Validate all deposit amounts are positive for active assets.
-    // (Domain layer also validates; this early check avoids wasting CU on
-    //  SPL transfers that would ultimately be reverted.)
     for i in 0..n {
         require!(
             params.amounts[i] > 0,
@@ -76,7 +82,7 @@ pub fn handler<'info>(
         );
     }
 
-    // remaining_accounts layout: [0..n) vaults, [n..2n) provider ATAs
+    // remaining_accounts layout: [0..n) vaults, [n..2n) provider ATAs, [2n]? tick
     let ata_offset = n;
 
     // Validate vault addresses match pool state
@@ -119,17 +125,69 @@ pub fn handler<'info>(
     let position = &mut ctx.accounts.position;
     position.bump = ctx.bumps.position;
     position.pool = pool.key();
-    position.tick = Pubkey::default(); // no tick for full-range MVP
     position.owner = ctx.accounts.provider.key();
     position.liquidity = result.liquidity;
-    position.tick_lower = FixedPoint::zero(); // full range
-    position.tick_upper = FixedPoint::from_raw(i128::MAX); // full range
     position.fees_earned = FixedPoint::zero();
     position._reserved = [0u8; 64];
 
     let clock = Clock::get()?;
     position.created_at = clock.unix_timestamp;
     position.updated_at = clock.unix_timestamp;
+
+    // ── Tick-specific logic (concentrated liquidity) ──
+    if has_tick {
+        let tick_acc = &remaining[2 * n];
+        let mut tick = load_tick_state_mut(tick_acc)?;
+
+        require!(tick.pool == pool.key(), OrbitalError::TickPoolMismatch);
+
+        // Add deposits to tick's per-tick reserves
+        for i in 0..n {
+            tick.reserves[i] = tick.reserves[i].checked_add(deposits_fp[i])?;
+        }
+        tick.liquidity = tick.liquidity.checked_add(result.liquidity)?;
+
+        // Handle accounting based on tick status:
+        //
+        // Interior ticks: deposits are already correctly counted in
+        //   pool.reserves and total_interior_liquidity by add_liquidity_to_pool.
+        //
+        // Boundary ticks: deposits must NOT inflate pool.reserves (boundary
+        //   reserves are frozen until the tick transitions to Interior via a
+        //   swap-driven tick crossing). Undo the pool.reserves addition and
+        //   move liquidity from interior to boundary accounting.
+        //
+        //   This is essential for balanced pools where alpha == k_min:
+        //   every valid tick (k > k_min) starts as Boundary, and without
+        //   this path the create-tick → add-liquidity flow would be blocked.
+        if tick.status == TickStatus::Boundary {
+            for i in 0..n {
+                pool.reserves[i] = pool.reserves[i].checked_sub(deposits_fp[i])?;
+            }
+            pool.total_interior_liquidity = pool
+                .total_interior_liquidity
+                .checked_sub(result.liquidity)?;
+            pool.total_boundary_liquidity = pool
+                .total_boundary_liquidity
+                .checked_add(result.liquidity)?;
+            // Recompute sphere and caches since pool.reserves changed
+            recompute_sphere(pool)?;
+            update_caches(pool)?;
+        }
+
+        // Set position tick reference and bounds
+        position.tick = *tick_acc.key;
+        position.tick_lower = tick.x_min;
+        position.tick_upper = tick.x_max;
+
+        // Serialize tick back to account
+        save_tick_state(tick_acc, &tick)?;
+    } else {
+        // Full-range position (no tick)
+        position.tick = Pubkey::default();
+        position.tick_lower = FixedPoint::zero();
+        position.tick_upper = FixedPoint::from_raw(i128::MAX);
+    }
 
     // Increment position counter for next PDA derivation
     pool.position_count = pool
@@ -144,7 +202,9 @@ pub fn handler<'info>(
         position: ctx.accounts.position.key(),
         amounts: params.amounts,
         liquidity: result.liquidity.raw,
-        new_radius: result.new_radius.raw,
+        // Use pool.sphere.radius (not result.new_radius) because the Boundary
+        // tick path recomputes the sphere after undoing provisional reserves.
+        new_radius: pool.sphere.radius.raw,
         n_assets: pool.n_assets,
         timestamp: clock.unix_timestamp,
     });
@@ -156,3 +216,5 @@ pub fn handler<'info>(
     );
     Ok(())
 }
+
+// Tick helpers (load_tick_state_mut, save_tick_state) imported from tick_helpers module.
