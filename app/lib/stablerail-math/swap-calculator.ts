@@ -576,6 +576,12 @@ function computeDeltaToBoundary(
   const root1 = negB.add(sqrtDisc).div(two);
   const root2 = negB.sub(sqrtDisc).div(two);
 
+  // If zero is a valid root, pool is already at k_cross — return 0
+  // so the caller enters the flip path (mirrors on-chain torus.rs).
+  if (root1.raw === 0n || root2.raw === 0n) {
+    return Q6464.zero();
+  }
+
   // Select smallest positive root
   const r1Pos = root1.raw > 0n;
   const r2Pos = root2.raw > 0n;

@@ -305,6 +305,15 @@ pub fn compute_delta_to_boundary(
     let root1 = neg_b.checked_add(sqrt_disc)?.checked_div(two)?;
     let root2 = neg_b.checked_sub(sqrt_disc)?.checked_div(two)?;
 
+    // If zero is a valid root, the pool is already at k_cross — return 0
+    // so execute_swap enters the `delta == 0` flip path. Without this,
+    // the selector would skip the zero root and return the other positive
+    // root, causing execute_swap to do a partial swap instead of flipping.
+    // (Occurs when alpha == k_cross: C = 0 → quadratic = d(d + B) = 0.)
+    if root1.raw == 0 || root2.raw == 0 {
+        return Ok(FixedPoint::zero());
+    }
+
     // Select the smallest positive root
     let result = match (root1.raw > 0, root2.raw > 0) {
         (true, true) => {

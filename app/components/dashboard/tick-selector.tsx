@@ -10,7 +10,7 @@
  *   - Auto-selects existing tick if one matches, otherwise creates new
  */
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Badge } from "../ui/badge";
 import { q6464ToNumber } from "../../lib/format-utils";
 import {
@@ -218,6 +218,30 @@ export function TickSelector({
       onChange({ mode: "concentrated", kRaw: raw });
     }
   }
+
+  // Sync preset kRaw with pool radius changes. When the pool refreshes
+  // (e.g., after another LP's deposit or a swap), kMin/kMax shift, so the
+  // preset's k and kRaw must be recomputed. Without this, the stale kRaw
+  // could fall outside the new [k_min, k_max] and fail on-chain.
+  useEffect(() => {
+    if (
+      activePreset &&
+      activePreset !== "custom" &&
+      selection.mode === "concentrated" &&
+      !selection.tickAddress // only for new tick creation, not existing ticks
+    ) {
+      const k = presetToK(PRESETS[activePreset].kPercent);
+      setKInput(k.toFixed(4));
+      const raw = kToQ6464Raw(k);
+      const match = findMatchingTick(ticks, raw);
+      if (match) {
+        onChange({ mode: "concentrated", tickAddress: match.address });
+      } else {
+        onChange({ mode: "concentrated", kRaw: raw });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kMin, kMax]);
 
   // Show all ticks (not just Interior) since add_liquidity now accepts
   // both Interior and Boundary ticks with correct accounting.
