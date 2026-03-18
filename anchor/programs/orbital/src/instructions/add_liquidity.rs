@@ -1,6 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Token};
 
+use crate::domain::core::{recompute_sphere, update_caches};
 use crate::domain::liquidity::add_liquidity_to_pool;
 use crate::errors::OrbitalError;
 use crate::events::LiquidityAdded;
@@ -137,19 +138,41 @@ pub fn handler<'info>(
         let tick_acc = &remaining[2 * n];
         let mut tick = load_tick_state_mut(tick_acc)?;
 
-        // Validate tick belongs to this pool and is interior (active).
-        // Boundary ticks are deactivated — deposits would corrupt interior accounting.
         require!(tick.pool == pool.key(), OrbitalError::TickPoolMismatch);
-        require!(
-            tick.status == TickStatus::Interior,
-            OrbitalError::InvalidTickBound
-        );
 
         // Add deposits to tick's per-tick reserves
         for i in 0..n {
             tick.reserves[i] = tick.reserves[i].checked_add(deposits_fp[i])?;
         }
         tick.liquidity = tick.liquidity.checked_add(result.liquidity)?;
+
+        // Handle accounting based on tick status:
+        //
+        // Interior ticks: deposits are already correctly counted in
+        //   pool.reserves and total_interior_liquidity by add_liquidity_to_pool.
+        //
+        // Boundary ticks: deposits must NOT inflate pool.reserves (boundary
+        //   reserves are frozen until the tick transitions to Interior via a
+        //   swap-driven tick crossing). Undo the pool.reserves addition and
+        //   move liquidity from interior to boundary accounting.
+        //
+        //   This is essential for balanced pools where alpha == k_min:
+        //   every valid tick (k > k_min) starts as Boundary, and without
+        //   this path the create-tick → add-liquidity flow would be blocked.
+        if tick.status == TickStatus::Boundary {
+            for i in 0..n {
+                pool.reserves[i] = pool.reserves[i].checked_sub(deposits_fp[i])?;
+            }
+            pool.total_interior_liquidity = pool
+                .total_interior_liquidity
+                .checked_sub(result.liquidity)?;
+            pool.total_boundary_liquidity = pool
+                .total_boundary_liquidity
+                .checked_add(result.liquidity)?;
+            // Recompute sphere and caches since pool.reserves changed
+            recompute_sphere(pool)?;
+            update_caches(pool)?;
+        }
 
         // Set position tick reference and bounds
         position.tick = *tick_acc.key;

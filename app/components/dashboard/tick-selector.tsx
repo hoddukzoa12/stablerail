@@ -141,7 +141,6 @@ function findMatchingTick(
   targetKRaw: bigint,
 ): TickInfo | undefined {
   return ticks.find((t) => {
-    if (t.status !== "Interior") return false;
     return t.kRaw === targetKRaw;
   });
 }
@@ -220,7 +219,9 @@ export function TickSelector({
     }
   }
 
-  const interiorTicks = ticks.filter((t) => t.status === "Interior");
+  // Show all ticks (not just Interior) since add_liquidity now accepts
+  // both Interior and Boundary ticks with correct accounting.
+  const availableTicks = ticks;
 
   return (
     <div className="space-y-3">
@@ -270,7 +271,7 @@ export function TickSelector({
               <span className="font-mono text-text-secondary">{fmt(kMax)}</span>
             </span>
             <span className="text-text-tertiary">
-              {interiorTicks.length} tick{interiorTicks.length !== 1 ? "s" : ""} active
+              {availableTicks.length} tick{availableTicks.length !== 1 ? "s" : ""} active
             </span>
           </div>
 
