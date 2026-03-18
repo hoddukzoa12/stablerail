@@ -7,7 +7,7 @@ use crate::errors::OrbitalError;
 use crate::events::LiquidityAdded;
 use crate::math::{sphere::MAX_ASSETS, FixedPoint};
 use crate::instructions::tick_helpers::{load_tick_state_mut, save_tick_state};
-use crate::state::{PoolState, PositionState, TickState, TickStatus};
+use crate::state::{PoolState, PositionState, TickStatus};
 
 #[derive(AnchorSerialize, AnchorDeserialize)]
 pub struct AddLiquidityParams {

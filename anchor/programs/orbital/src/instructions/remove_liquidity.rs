@@ -7,7 +7,7 @@ use crate::events::LiquidityRemoved;
 use crate::math::FixedPoint;
 use crate::math::sphere::MAX_ASSETS;
 use crate::instructions::tick_helpers::{load_tick_state, save_tick_state};
-use crate::state::{PoolState, PositionState, TickState, TickStatus};
+use crate::state::{PoolState, PositionState, TickStatus};
 
 #[derive(AnchorSerialize, AnchorDeserialize)]
 pub struct RemoveLiquidityParams {

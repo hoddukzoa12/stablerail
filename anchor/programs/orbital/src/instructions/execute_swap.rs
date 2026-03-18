@@ -10,7 +10,7 @@ use crate::math::torus::{
 };
 use crate::math::FixedPoint;
 use crate::instructions::tick_helpers::load_tick_state;
-use crate::state::{PoolState, TickState, TickStatus};
+use crate::state::{PoolState, TickStatus};
 
 #[derive(AnchorSerialize, AnchorDeserialize)]
 pub struct SwapParams {

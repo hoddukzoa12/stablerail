@@ -1,8 +1,7 @@
 use anchor_lang::prelude::*;
 
-use crate::domain::core::{recompute_sphere, update_caches};
 use crate::errors::OrbitalError;
-use crate::state::{PoolState, TickState, TickStatus};
+use crate::state::{PoolState, TickState};
 
 #[derive(AnchorSerialize, AnchorDeserialize)]
 pub struct CloseTickParams {
