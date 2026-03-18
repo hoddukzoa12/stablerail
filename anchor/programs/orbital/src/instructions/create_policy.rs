@@ -47,7 +47,15 @@ pub fn handler(ctx: Context<CreatePolicy>, params: CreatePolicyParams) -> Result
     policy.max_daily_volume = FixedPoint::from_token_amount(params.max_daily_volume, pool_decimals)?;
     policy.current_daily_volume = FixedPoint::zero();
     policy.is_active = true;
-    policy._reserved = [0u8; 64];
+
+    // KYC/KYT/AML compliance fields — default to disabled for backward compat
+    policy.max_risk_score = 100; // permissive default (allow all)
+    policy.require_travel_rule = false;
+    policy.travel_rule_threshold = 0;
+    policy.allowed_jurisdictions = [[0u8; 2]; 16];
+    policy.jurisdiction_count = 0;
+    policy.kyc_required = false;
+    policy._reserved = [0u8; 20];
 
     let clock = Clock::get()?;
     policy.last_reset_timestamp = clock.unix_timestamp;

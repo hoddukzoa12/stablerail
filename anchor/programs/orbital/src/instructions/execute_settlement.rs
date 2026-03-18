@@ -8,7 +8,8 @@ use crate::events::SettlementExecuted;
 use crate::math::newton::compute_amount_out_analytical;
 use crate::math::FixedPoint;
 use crate::state::{
-    AllowlistState, AuditEntryState, PolicyState, PoolState, SettlementState, SettlementStatus,
+    AllowlistState, AuditEntryState, KycEntryState, KycStatus, PolicyState, PoolState,
+    SettlementState, SettlementStatus,
 };
 
 #[derive(AnchorSerialize, AnchorDeserialize)]
@@ -128,9 +129,59 @@ pub fn handler<'info>(
     );
     policy.current_daily_volume = new_daily_volume;
 
-    // ── Validate remaining_accounts ──
+    // ── KYC/KYT/AML compliance checks (when policy.kyc_required is true) ──
+    //
+    // remaining_accounts layout:
+    //   [0..4) = vaults + ATAs (always required)
+    //   [4]    = kyc_entry PDA (required when policy.kyc_required == true)
     let remaining = &ctx.remaining_accounts;
-    require!(remaining.len() == 4, OrbitalError::InvalidRemainingAccounts);
+    let expected_remaining = if policy.kyc_required { 5 } else { 4 };
+    require!(
+        remaining.len() >= expected_remaining,
+        OrbitalError::InvalidRemainingAccounts
+    );
+
+    if policy.kyc_required {
+        // Cache policy compliance fields to avoid borrow conflicts
+        let policy_key = policy.key();
+        let max_risk = policy.max_risk_score;
+        let jur_count = policy.jurisdiction_count as usize;
+        let jur_list = policy.allowed_jurisdictions;
+
+        let kyc_acc = &remaining[4];
+        // Validate program ownership (prevents forged accounts)
+        require!(kyc_acc.owner == &crate::ID, OrbitalError::KycNotVerified);
+        let data = kyc_acc.try_borrow_data()?;
+        let mut slice: &[u8] = &data;
+        let kyc_entry = KycEntryState::try_deserialize(&mut slice)
+            .map_err(|_| OrbitalError::KycNotVerified)?;
+
+        // Validate the KYC entry belongs to this policy and executor
+        require!(kyc_entry.policy == policy_key, OrbitalError::KycNotVerified);
+        require!(kyc_entry.address == executor.key(), OrbitalError::KycNotVerified);
+
+        // KYC status must be Verified
+        require!(kyc_entry.kyc_status == KycStatus::Verified, OrbitalError::KycNotVerified);
+
+        // KYC must not be expired
+        require!(kyc_entry.kyc_expiry > clock.unix_timestamp, OrbitalError::KycExpired);
+
+        // Risk score must be within policy threshold
+        require!(kyc_entry.risk_score <= max_risk, OrbitalError::RiskScoreExceeded);
+
+        // AML screening must be cleared
+        require!(kyc_entry.aml_cleared, OrbitalError::AmlNotCleared);
+
+        // Jurisdiction check (only when policy has allowed jurisdictions)
+        if jur_count > 0 {
+            let allowed = jur_list[..jur_count]
+                .iter()
+                .any(|j| *j == kyc_entry.jurisdiction);
+            require!(allowed, OrbitalError::JurisdictionNotAllowed);
+        }
+    }
+
+    // ── Validate remaining_accounts (vaults + ATAs) ──
 
     require!(
         *remaining[0].key == pool.token_vaults[token_in],

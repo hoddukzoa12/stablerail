@@ -226,3 +226,30 @@ pub struct SettlementExecuted {
     /// Unix timestamp
     pub timestamp: i64,
 }
+
+// ═══════════════════════════════════════════
+//  KYC/KYT/AML Compliance Events
+// ═══════════════════════════════════════════
+
+/// Emitted when a KYC entry is created or updated via `manage_kyc_entry`.
+#[event]
+pub struct KycEntryUpdated {
+    /// Policy account pubkey
+    pub policy: Pubkey,
+    /// Authority who updated the entry
+    pub authority: Pubkey,
+    /// Executor wallet whose KYC was updated
+    pub member: Pubkey,
+    /// KYC status (0=Pending, 1=Verified, 2=Expired, 3=Revoked)
+    pub kyc_status: u8,
+    /// KYT risk score (0-100)
+    pub risk_score: u8,
+    /// ISO 3166-1 alpha-2 jurisdiction code
+    pub jurisdiction: [u8; 2],
+    /// AML screening cleared
+    pub aml_cleared: bool,
+    /// KYC expiry timestamp
+    pub kyc_expiry: i64,
+    /// Unix timestamp
+    pub timestamp: i64,
+}
