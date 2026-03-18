@@ -717,7 +717,7 @@ function recomputeRadius(reserves: Q6464[], n: number): Q6464 {
  */
 export function parseTokenAmount(s: string, decimals: number): bigint {
   const trimmed = s.trim();
-  if (!trimmed || trimmed === '.' || trimmed === '-') return 0n;
+  if (!trimmed || trimmed === '.' || trimmed.startsWith('-')) return 0n;
 
   const [intPart = '0', fracPart = ''] = trimmed.split('.');
   // Truncate fractional digits beyond token precision (no rounding)

@@ -64,28 +64,19 @@ pub fn handler(ctx: Context<CloseTick>, _params: CloseTickParams) -> Result<()> 
         OrbitalError::TickHasLiquidity
     );
 
-    // Only boundary ticks hold reserves separate from pool.reserves.
+    // Boundary tick reserves after full LP withdrawal are Q64.64 dust
+    // (sub-token fractional bits from floor rounding in remove_liquidity).
+    // These dust amounts do NOT exist in the vault — adding them to
+    // pool.reserves would create pool.reserves > vault balance, causing
+    // the last LP's withdraw to fail on SPL transfer.
+    //
     // Interior tick reserves are already included in pool.reserves
     // (interior swaps update pool.reserves directly, not tick.reserves),
-    // so adding them back would double-count and corrupt pool state.
-    let n = pool.n_assets as usize;
+    // so they must NOT be added back either (would double-count).
+    //
+    // In both cases: discard tick.reserves silently. The dust is at most
+    // n × 1 sub-token (≈ $0.000003 for 3-asset USDC pool).
     let pool = &mut ctx.accounts.pool;
-    let mut reserves_changed = false;
-    if tick.status == TickStatus::Boundary {
-        for i in 0..n {
-            if !tick.reserves[i].is_zero() {
-                pool.reserves[i] = pool.reserves[i].checked_add(tick.reserves[i])?;
-                reserves_changed = true;
-            }
-        }
-    }
-
-    // Refresh sphere geometry and caches so subsequent swaps use
-    // correct pricing after the reserve mutation.
-    if reserves_changed {
-        recompute_sphere(pool)?;
-        update_caches(pool)?;
-    }
 
     pool.tick_count = pool
         .tick_count
