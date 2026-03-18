@@ -12,7 +12,8 @@
  *    settlement(1), audit_entry(1), token_program(0), system_program(0)]
  *
  * remaining_accounts:
- *   [vault_in(1), vault_out(1), executor_ata_in(1), executor_ata_out(1)]
+ *   [vault_in(1), vault_out(1), executor_ata_in(1), executor_ata_out(1),
+ *    kyc_entry?(0) — appended when kycRequired is true]
  */
 
 import { useCallback } from "react";
@@ -36,6 +37,8 @@ export interface SettlementExecuteParams {
   vaultOut: string;
   mintIn: string;
   mintOut: string;
+  /** When true, derives and appends KYC entry PDA to remaining_accounts */
+  kycRequired?: boolean;
 }
 
 function encodeInstruction(
@@ -105,22 +108,41 @@ export function useExecuteSettlement(): WriteTransactionResult<SettlementExecute
 
       const auditPda = await deriveAuditPda(settlementPda);
 
+      // Base remaining_accounts: vaults + ATAs
+      const accounts: Array<{ address: Address; role: 0 | 1 | 2 | 3 }> = [
+        { address: executorAddress, role: 3 as const },
+        { address: POOL_PDA as Address, role: 1 as const },
+        { address: POLICY_PDA as Address, role: 1 as const },
+        { address: ALLOWLIST_PDA as Address, role: 0 as const },
+        { address: settlementPda, role: 1 as const },
+        { address: auditPda, role: 1 as const },
+        { address: TOKEN_PROGRAM_ID, role: 0 as const },
+        { address: SYSTEM_PROGRAM_ID, role: 0 as const },
+        { address: params.vaultIn as Address, role: 1 as const },
+        { address: params.vaultOut as Address, role: 1 as const },
+        { address: executorAtaIn, role: 1 as const },
+        { address: executorAtaOut, role: 1 as const },
+      ];
+
+      // When KYC is required, append the executor's KYC entry PDA
+      // as remaining_accounts[4] (readonly). On-chain execute_settlement
+      // reads this to verify KYC status, expiry, risk score, and AML.
+      if (params.kycRequired) {
+        const encoder = getAddressEncoder();
+        const [kycEntryPda] = await getProgramDerivedAddress({
+          programAddress: PROGRAM_ID as Address,
+          seeds: [
+            new TextEncoder().encode("kyc_entry"),
+            encoder.encode(POLICY_PDA as Address),
+            encoder.encode(executorAddress),
+          ],
+        });
+        accounts.push({ address: kycEntryPda, role: 0 as const });
+      }
+
       return {
         programAddress: PROGRAM_ID as Address,
-        accounts: [
-          { address: executorAddress, role: 3 as const },
-          { address: POOL_PDA as Address, role: 1 as const },
-          { address: POLICY_PDA as Address, role: 1 as const },
-          { address: ALLOWLIST_PDA as Address, role: 0 as const },
-          { address: settlementPda, role: 1 as const },
-          { address: auditPda, role: 1 as const },
-          { address: TOKEN_PROGRAM_ID, role: 0 as const },
-          { address: SYSTEM_PROGRAM_ID, role: 0 as const },
-          { address: params.vaultIn as Address, role: 1 as const },
-          { address: params.vaultOut as Address, role: 1 as const },
-          { address: executorAtaIn, role: 1 as const },
-          { address: executorAtaOut, role: 1 as const },
-        ],
+        accounts,
         data: encodeInstruction(params, nonce),
       };
     },
