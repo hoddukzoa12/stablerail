@@ -88,6 +88,7 @@ export default function AdminPage() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
+        {/* Left column: Policy settings */}
         <div className="space-y-6">
           <PolicyStatusCard policy={policy} />
           {isAuthority && (
@@ -95,7 +96,16 @@ export default function AdminPage() {
           )}
         </div>
 
+        {/* Right column: KYC (primary) + Allowlist (legacy fallback) */}
         <div className="space-y-6">
+          {isAuthority && (
+            <KycManagement
+              onSubmit={async (params) => {
+                await executeKyc(params);
+              }}
+              isSending={kycSending}
+            />
+          )}
           {isAuthority && (
             <AllowlistManager onSuccess={refreshAllowlist} />
           )}
@@ -106,18 +116,6 @@ export default function AdminPage() {
           />
         </div>
       </div>
-
-      {/* KYC/KYT/AML Management — authority only */}
-      {isAuthority && (
-        <div className="mt-6">
-          <KycManagement
-            onSubmit={async (params) => {
-              await executeKyc(params);
-            }}
-            isSending={kycSending}
-          />
-        </div>
-      )}
     </div>
   );
 }
