@@ -53,22 +53,9 @@ export function SwapCard() {
   const { ticks: rawTicks, isLoading: ticksLoading } = usePoolTicks(pool?.nAssets ?? 3);
   const { balances, refresh: refreshBalances } = useTokenBalances();
 
-  // Convert TickInfo[] from usePoolTicks to TickData[] for the swap calculator.
-  // Filter to pool.tickCount entries when getProgramAccounts returns stale orphans
-  // (e.g. ticks from previous program deployments with the same pool PDA).
-  const filteredTicks = useMemo(() => {
-    if (!pool || rawTicks.length === 0) return rawTicks;
-    if (rawTicks.length <= pool.tickCount) return rawTicks;
-    // Keep ticks with liquidity first, then by k value
-    return [...rawTicks]
-      .sort((a, b) => {
-        const aLiq = a.liquidityRaw > 0n ? 1 : 0;
-        const bLiq = b.liquidityRaw > 0n ? 1 : 0;
-        if (bLiq !== aLiq) return bLiq - aLiq;
-        return a.kRaw < b.kRaw ? -1 : a.kRaw > b.kRaw ? 1 : 0;
-      })
-      .slice(0, pool.tickCount);
-  }, [rawTicks, pool]);
+  // usePoolTicks already performs PDA verification to filter orphan ticks.
+  // No additional client-side filtering needed.
+  const filteredTicks = rawTicks;
 
   const tickData: TickData[] | undefined = useMemo(
     () =>

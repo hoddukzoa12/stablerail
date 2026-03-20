@@ -12,6 +12,20 @@ use crate::state::{
     SettlementState, SettlementStatus,
 };
 
+/// Travel Rule payload — per-transfer originator/beneficiary identification
+/// required for settlements above the policy's configured threshold.
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct TravelRuleData {
+    /// Originator name (e.g., institution name), max 64 bytes
+    pub originator_name: [u8; 64],
+    /// Beneficiary name, max 64 bytes
+    pub beneficiary_name: [u8; 64],
+    /// Originator VASP identifier (e.g., LEI or DID), max 32 bytes
+    pub originator_vasp: [u8; 32],
+    /// Transfer purpose code (e.g., b"TRADE", b"SETTL")
+    pub purpose: [u8; 8],
+}
+
 #[derive(AnchorSerialize, AnchorDeserialize)]
 pub struct ExecuteSettlementParams {
     pub token_in_index: u8,
@@ -19,6 +33,9 @@ pub struct ExecuteSettlementParams {
     pub amount: u64,
     pub min_amount_out: u64,
     pub nonce: u64,
+    /// Travel Rule data, required when policy.require_travel_rule is true
+    /// and amount >= policy.travel_rule_threshold
+    pub travel_rule_data: Option<TravelRuleData>,
 }
 
 /// Accounts for `execute_settlement`.
@@ -183,13 +200,22 @@ pub fn handler<'info>(
         }
 
         // Travel Rule enforcement: when enabled, settlements at or above
-        // the threshold require the executor's KYC entry to have a valid
-        // jurisdiction (non-zero), ensuring VASP identification is on file.
+        // the threshold require a TravelRuleData payload with non-empty
+        // originator/beneficiary identification per FATF guidelines.
         if require_travel_rule && travel_rule_threshold > 0 {
             if params.amount >= travel_rule_threshold {
-                // KYC jurisdiction must be set (non-zero bytes = VASP on file)
+                let tr = params
+                    .travel_rule_data
+                    .as_ref()
+                    .ok_or(OrbitalError::TravelRuleRequired)?;
+                // Originator name must not be all zeros
                 require!(
-                    kyc_entry.jurisdiction != [0u8; 2],
+                    tr.originator_name.iter().any(|&b| b != 0),
+                    OrbitalError::TravelRuleRequired
+                );
+                // Beneficiary name must not be all zeros
+                require!(
+                    tr.beneficiary_name.iter().any(|&b| b != 0),
                     OrbitalError::TravelRuleRequired
                 );
             }

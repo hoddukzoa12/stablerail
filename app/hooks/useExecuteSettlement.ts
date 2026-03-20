@@ -5,7 +5,8 @@
  *
  * Instruction layout:
  *   discriminator(8) + token_in_index(1) + token_out_index(1)
- *   + amount(8) + min_amount_out(8) + nonce(8) = 34 bytes
+ *   + amount(8) + min_amount_out(8) + nonce(8)
+ *   + Option<TravelRuleData>(1 or 1+168) = 35..203 bytes
  *
  * Named accounts:
  *   [executor(3), pool(1), policy(1), allowlist(0),
@@ -28,6 +29,14 @@ import { useWriteTransaction, type WriteTransactionResult } from "./useWriteTran
 
 const DISCRIMINATOR = new Uint8Array([237, 120, 82, 62, 224, 193, 147, 137]);
 
+/** Travel Rule payload for settlements above the configured threshold. */
+export interface TravelRuleInput {
+  originatorName: string;   // max 64 chars
+  beneficiaryName: string;  // max 64 chars
+  originatorVasp: string;   // max 32 chars (LEI or DID)
+  purpose: string;          // max 8 chars (e.g., "TRADE", "SETTL")
+}
+
 export interface SettlementExecuteParams {
   tokenInIndex: number;
   tokenOutIndex: number;
@@ -39,13 +48,28 @@ export interface SettlementExecuteParams {
   mintOut: string;
   /** When true, derives and appends KYC entry PDA to remaining_accounts */
   kycRequired?: boolean;
+  /** Travel Rule data, required when policy enforces Travel Rule above threshold */
+  travelRuleData?: TravelRuleInput;
+}
+
+/** Encode a string into a fixed-size byte array, padded with zeros. */
+function stringToFixedBytes(s: string, size: number): Uint8Array {
+  const buf = new Uint8Array(size);
+  const encoded = new TextEncoder().encode(s.slice(0, size));
+  buf.set(encoded);
+  return buf;
 }
 
 function encodeInstruction(
   params: SettlementExecuteParams,
   nonce: bigint,
 ): Uint8Array {
-  const buf = new ArrayBuffer(34);
+  // Base: disc(8) + token_in(1) + token_out(1) + amount(8) + min_out(8) + nonce(8) = 34
+  // + Option<TravelRuleData>: None = 1 byte, Some = 1 + 64+64+32+8 = 169 bytes
+  const hasTravelRule = !!params.travelRuleData;
+  const totalSize = 34 + (hasTravelRule ? 169 : 1);
+
+  const buf = new ArrayBuffer(totalSize);
   const bytes = new Uint8Array(buf);
   const view = new DataView(buf);
 
@@ -55,6 +79,17 @@ function encodeInstruction(
   view.setBigUint64(10, params.amount, true);
   view.setBigUint64(18, params.minAmountOut, true);
   view.setBigUint64(26, nonce, true);
+
+  if (hasTravelRule) {
+    const tr = params.travelRuleData!;
+    bytes[34] = 1; // Option::Some
+    bytes.set(stringToFixedBytes(tr.originatorName, 64), 35);
+    bytes.set(stringToFixedBytes(tr.beneficiaryName, 64), 99);
+    bytes.set(stringToFixedBytes(tr.originatorVasp, 32), 163);
+    bytes.set(stringToFixedBytes(tr.purpose, 8), 195);
+  } else {
+    bytes[34] = 0; // Option::None
+  }
 
   return bytes;
 }

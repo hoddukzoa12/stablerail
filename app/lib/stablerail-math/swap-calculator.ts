@@ -230,28 +230,13 @@ export function computeSwapQuoteWithTicks(
     return computeSwapQuote(poolState, tokenInIndex, tokenOutIndex, amountIn);
   }
 
-  // On-chain execute_swap requires exactly pool.tick_count tick accounts.
-  // getProgramAccounts may return stale/orphan ticks from previous deployments.
-  // Filter to ticks with non-zero liquidity first, then by most recent creation.
-  let activeTicks = ticks;
-  if (ticks.length > poolState.tickCount) {
-    // Prefer ticks with liquidity, then sort by creation time descending
-    activeTicks = [...ticks]
-      .sort((a, b) => {
-        // Liquidity-bearing ticks first
-        const aHasLiq = a.liquidityRaw > 0n ? 1 : 0;
-        const bHasLiq = b.liquidityRaw > 0n ? 1 : 0;
-        if (bHasLiq !== aHasLiq) return bHasLiq - aHasLiq;
-        // Then by k value (deterministic ordering)
-        return a.kRaw < b.kRaw ? -1 : a.kRaw > b.kRaw ? 1 : 0;
-      })
-      .slice(0, poolState.tickCount);
-  } else if (ticks.length < poolState.tickCount) {
+  // Tick set is already PDA-verified by usePoolTicks. If count doesn't
+  // match, it indicates a fetch/close race — reject rather than guess.
+  if (ticks.length !== poolState.tickCount) {
     throw new Error(
-      `computeSwapQuoteWithTicks: expected ${poolState.tickCount} ticks but got ${ticks.length} — partial tick set not supported`,
+      `computeSwapQuoteWithTicks: expected ${poolState.tickCount} ticks but got ${ticks.length} — tick set mismatch`,
     );
   }
-  ticks = activeTicks;
 
   // ── 1. Input validation ──
   const n = poolState.nAssets;

@@ -11,7 +11,12 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { createSolanaRpc, type Address, getAddressEncoder } from "@solana/kit";
+import {
+  createSolanaRpc,
+  type Address,
+  getAddressEncoder,
+  getProgramDerivedAddress,
+} from "@solana/kit";
 import type { Base64EncodedBytes } from "@solana/rpc-types";
 import { PROGRAM_ID, POOL_PDA } from "../lib/devnet-config";
 import {
@@ -80,19 +85,40 @@ export function usePoolTicks(nAssets: number = 3) {
         );
       }
 
+      // PDA verification: filter out orphan ticks whose address doesn't match
+      // the expected PDA derived from ["tick", pool, k_le_bytes]. Orphan ticks
+      // may exist from previous pool deployments or incomplete close_tick calls.
+      const verified: TickInfo[] = [];
+      for (const tick of parsed) {
+        // Encode k as i128 LE (16 bytes)
+        const kBytes = new Uint8Array(16);
+        const kView = new DataView(kBytes.buffer);
+        // i128 LE: low 8 bytes then high 8 bytes
+        kView.setBigUint64(0, BigInt.asUintN(64, tick.kRaw), true);
+        kView.setBigUint64(8, BigInt.asUintN(64, tick.kRaw >> 64n), true);
+
+        const [expectedPda] = await getProgramDerivedAddress({
+          programAddress: PROGRAM_ID as Address,
+          seeds: [new TextEncoder().encode("tick"), poolBytes, kBytes],
+        });
+        if (expectedPda === tick.address) {
+          verified.push(tick);
+        }
+      }
+
       // Detect duplicate k values — on-chain DuplicateTickAccount guard should
       // prevent this, but corrupted state must surface as an error, not be
       // silently masked by deduplication.
-      const kSet = new Set(parsed.map((t) => t.kRaw.toString()));
-      if (kSet.size !== parsed.length) {
+      const kSet = new Set(verified.map((t) => t.kRaw.toString()));
+      if (kSet.size !== verified.length) {
         throw new Error(
           "Duplicate tick k-values detected — pool state may be corrupted",
         );
       }
 
       // Sort by k value ascending
-      parsed.sort((a, b) => a.kDisplay - b.kDisplay);
-      setTicks(parsed);
+      verified.sort((a, b) => a.kDisplay - b.kDisplay);
+      setTicks(verified);
       setError(null);
     } catch (err) {
       console.error("Failed to fetch pool ticks:", err);
