@@ -147,6 +147,8 @@ pub fn handler<'info>(
         let max_risk = policy.max_risk_score;
         let jur_count = policy.jurisdiction_count as usize;
         let jur_list = policy.allowed_jurisdictions;
+        let require_travel_rule = policy.require_travel_rule;
+        let travel_rule_threshold = policy.travel_rule_threshold;
 
         let kyc_acc = &remaining[4];
         // Validate program ownership (prevents forged accounts)
@@ -178,6 +180,19 @@ pub fn handler<'info>(
                 .iter()
                 .any(|j| *j == kyc_entry.jurisdiction);
             require!(allowed, OrbitalError::JurisdictionNotAllowed);
+        }
+
+        // Travel Rule enforcement: when enabled, settlements at or above
+        // the threshold require the executor's KYC entry to have a valid
+        // jurisdiction (non-zero), ensuring VASP identification is on file.
+        if require_travel_rule && travel_rule_threshold > 0 {
+            if params.amount >= travel_rule_threshold {
+                // KYC jurisdiction must be set (non-zero bytes = VASP on file)
+                require!(
+                    kyc_entry.jurisdiction != [0u8; 2],
+                    OrbitalError::TravelRuleRequired
+                );
+            }
         }
     }
 

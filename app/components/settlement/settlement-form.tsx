@@ -76,6 +76,7 @@ export function SettlementForm({ policy, tokenBalances, onSuccess }: SettlementF
         vaultOut: tokenOut.vault,
         mintIn: tokenIn.mint,
         mintOut: tokenOut.mint,
+        kycRequired: policy.kycRequired,
       });
       setAmount("");
       onSuccess();

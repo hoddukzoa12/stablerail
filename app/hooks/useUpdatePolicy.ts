@@ -21,6 +21,12 @@ export interface UpdatePolicyParams {
   maxTradeAmount?: bigint;
   maxDailyVolume?: bigint;
   isActive?: boolean;
+  // KYC/KYT/AML compliance fields
+  kycRequired?: boolean;
+  maxRiskScore?: number; // u8 (0-100)
+  requireTravelRule?: boolean;
+  travelRuleThreshold?: bigint;
+  allowedJurisdictions?: Array<[number, number]>; // ISO 3166-1 alpha-2 as byte pairs
 }
 
 function encodeBorshOptionU64(value: bigint | undefined): Uint8Array {
@@ -38,12 +44,37 @@ function encodeBorshOptionBool(value: boolean | undefined): Uint8Array {
   return new Uint8Array([1, value ? 1 : 0]);
 }
 
+function encodeBorshOptionU8(value: number | undefined): Uint8Array {
+  if (value === undefined) return new Uint8Array([0]);
+  return new Uint8Array([1, value & 0xff]);
+}
+
+function encodeBorshOptionVecBytes2(
+  value: Array<[number, number]> | undefined,
+): Uint8Array {
+  if (value === undefined) return new Uint8Array([0]);
+  // Borsh Option::Some(Vec<[u8;2]>) = 1 + u32_le(len) + len*2
+  const buf = new Uint8Array(1 + 4 + value.length * 2);
+  buf[0] = 1;
+  new DataView(buf.buffer).setUint32(1, value.length, true);
+  for (let i = 0; i < value.length; i++) {
+    buf[5 + i * 2] = value[i][0];
+    buf[5 + i * 2 + 1] = value[i][1];
+  }
+  return buf;
+}
+
 function encodeInstruction(params: UpdatePolicyParams): Uint8Array {
   return concatBytes(
     DISCRIMINATOR,
     encodeBorshOptionU64(params.maxTradeAmount),
     encodeBorshOptionU64(params.maxDailyVolume),
     encodeBorshOptionBool(params.isActive),
+    encodeBorshOptionBool(params.kycRequired),
+    encodeBorshOptionU8(params.maxRiskScore),
+    encodeBorshOptionBool(params.requireTravelRule),
+    encodeBorshOptionU64(params.travelRuleThreshold),
+    encodeBorshOptionVecBytes2(params.allowedJurisdictions),
   );
 }
 
