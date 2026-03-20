@@ -354,8 +354,8 @@ export function deserializeAuditEntryState(
 
 // ── KycEntryState Deserializer ──
 
-// sha256("account:KycEntryState")[..8] — computed from Anchor discriminator
-// Will be set after first anchor build; placeholder for now
+// sha256("account:KycEntryState")[..8]
+const KYC_ENTRY_DISCRIMINATOR = new Uint8Array([151, 22, 100, 199, 7, 241, 63, 39]);
 const KYC_ENTRY_SIZE = 126;
 
 const KYC_STATUS_MAP: Record<number, KycStatusType> = {
@@ -386,7 +386,7 @@ export function deserializeKycEntryState(data: Uint8Array): KycEntryData {
   if (data.length < KYC_ENTRY_SIZE) {
     throw new Error(`KycEntryState: expected >= ${KYC_ENTRY_SIZE} bytes, got ${data.length}`);
   }
-  // Skip discriminator verification for now (computed after first build)
+  verifyDiscriminator(data, KYC_ENTRY_DISCRIMINATOR, "KycEntryState");
 
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
 
@@ -413,4 +413,5 @@ export {
   ALLOWLIST_DISCRIMINATOR,
   SETTLEMENT_DISCRIMINATOR,
   AUDIT_DISCRIMINATOR,
+  KYC_ENTRY_DISCRIMINATOR,
 };

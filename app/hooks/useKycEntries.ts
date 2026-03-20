@@ -14,11 +14,9 @@ import type { Base64EncodedBytes } from "@solana/rpc-types";
 import { PROGRAM_ID, POLICY_PDA } from "../lib/devnet-config";
 import {
   deserializeKycEntryState,
+  KYC_ENTRY_DISCRIMINATOR,
   type KycEntryData,
 } from "../lib/settlement-deserializer";
-
-// sha256("account:KycEntryState")[..8]
-const KYC_ENTRY_DISCRIMINATOR = new Uint8Array([151, 22, 100, 199, 7, 241, 63, 39]);
 
 const POLL_INTERVAL = 30_000;
 
