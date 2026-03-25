@@ -92,7 +92,9 @@ export function PolicyForm({ policy, onSuccess }: PolicyFormProps) {
         travelRuleThreshold:
           !isNaN(threshVal)
             ? BigInt(Math.floor(threshVal * 1e6))
-            : undefined,
+            : travelRuleThreshold === "" && policy.travelRuleThreshold > 0n
+              ? 0n
+              : undefined,
       });
       onSuccess();
     } catch {
