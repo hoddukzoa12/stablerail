@@ -202,8 +202,9 @@ pub fn handler<'info>(
         // Travel Rule enforcement: when enabled, settlements at or above
         // the threshold require a TravelRuleData payload with non-empty
         // originator/beneficiary identification per FATF guidelines.
-        if require_travel_rule && travel_rule_threshold > 0 {
-            if params.amount >= travel_rule_threshold {
+        // When threshold is 0, ALL settlements require Travel Rule data.
+        if require_travel_rule {
+            if travel_rule_threshold == 0 || params.amount >= travel_rule_threshold {
                 let tr = params
                     .travel_rule_data
                     .as_ref()

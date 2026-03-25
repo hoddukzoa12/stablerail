@@ -11,7 +11,7 @@
  * Debounces by 300ms to avoid excessive computation during typing.
  */
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import {
   Q6464,
   computeSwapQuoteWithTicks,
@@ -55,13 +55,19 @@ export function useSwapQuote(
   const [isComputing, setIsComputing] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Stable reference for ticks to avoid re-triggering on every render.
-  // We track tick count separately so the effect re-fires when ticks
-  // are added/removed without resetting the debounce on every poll cycle
-  // (which produces a new array reference each time).
+  // Stable reference for ticks — updated every render so the debounced
+  // callback always reads the latest data without being a dependency.
   const ticksRef = useRef<TickData[] | undefined>(ticks);
   ticksRef.current = ticks;
-  const tickCount = ticks?.length ?? 0;
+
+  // Lightweight content fingerprint: encodes tick count + each tick's
+  // liquidity. Changes when ticks are added/removed OR when any tick's
+  // reserves shift (after swaps or LP actions), triggering quote recomputation
+  // without resetting the debounce on every poll cycle.
+  const tickFingerprint = useMemo(() => {
+    if (!ticks || ticks.length === 0) return "0";
+    return ticks.map((t) => t.liquidityRaw.toString(36)).join(",");
+  }, [ticks]);
 
   useEffect(() => {
     // Clear previous timer
@@ -139,11 +145,11 @@ export function useSwapQuote(
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-    // `ticks` array reference is excluded (changes every poll cycle),
-    // but `tickCount` triggers recomputation when ticks are added/removed.
-    // ticksRef.current always holds the latest tick data.
+    // `ticks` array reference is excluded (changes every poll cycle).
+    // `tickFingerprint` captures both count and content changes so quote
+    // recomputes when tick liquidity/reserves shift after swaps or LP actions.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pool, tokenInIndex, tokenOutIndex, amountIn, decimals, tickCount]);
+  }, [pool, tokenInIndex, tokenOutIndex, amountIn, decimals, tickFingerprint]);
 
   return { quote, error, isComputing };
 }
