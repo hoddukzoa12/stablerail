@@ -225,7 +225,9 @@ export function SettlementForm({ policy, tokenBalances, onSuccess }: SettlementF
                 </span>
               </div>
               <p className="mb-3 text-xs text-text-tertiary">
-                Settlements of {formatAmount(Number(policy.travelRuleThreshold) / 1e6)}+ USD require FATF Travel Rule data.
+                {Number(policy.travelRuleThreshold) === 0
+                  ? "All settlements require FATF Travel Rule data."
+                  : `Settlements of ${formatAmount(Number(policy.travelRuleThreshold) / 1e6)}+ USD require FATF Travel Rule data.`}
               </p>
               <div className="space-y-3">
                 <div>

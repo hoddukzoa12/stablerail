@@ -66,7 +66,14 @@ export function useSwapQuote(
   // without resetting the debounce on every poll cycle.
   const tickFingerprint = useMemo(() => {
     if (!ticks || ticks.length === 0) return "0";
-    return ticks.map((t) => t.liquidityRaw.toString(36)).join(",");
+    // Include liquidity AND reserves so quote refreshes after swaps/LP
+    // that change per-tick reserves without altering tick count.
+    return ticks
+      .map((t) => {
+        const res = t.reservesRaw.map((r) => r.toString(36)).join("|");
+        return `${t.liquidityRaw.toString(36)}:${res}`;
+      })
+      .join(",");
   }, [ticks]);
 
   useEffect(() => {
