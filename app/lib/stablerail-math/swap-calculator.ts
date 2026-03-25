@@ -230,11 +230,12 @@ export function computeSwapQuoteWithTicks(
     return computeSwapQuote(poolState, tokenInIndex, tokenOutIndex, amountIn);
   }
 
-  // Tick set is already PDA-verified by usePoolTicks. If count doesn't
-  // match, it indicates a fetch/close race — reject rather than guess.
-  if (ticks.length !== poolState.tickCount) {
+  // Tick set is already PDA-verified by usePoolTicks. Having fewer ticks
+  // than expected means some are missing (fetch race / close) — reject.
+  // Having more is safe (stale tickCount after recent tick creation).
+  if (ticks.length < poolState.tickCount) {
     throw new Error(
-      `computeSwapQuoteWithTicks: expected ${poolState.tickCount} ticks but got ${ticks.length} — tick set mismatch`,
+      `computeSwapQuoteWithTicks: expected ${poolState.tickCount} ticks but got ${ticks.length} — missing ticks`,
     );
   }
 
