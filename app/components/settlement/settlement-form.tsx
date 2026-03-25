@@ -59,7 +59,8 @@ export function SettlementForm({ policy, tokenBalances, onSuccess }: SettlementF
   const travelRuleRequired = useMemo(() => {
     if (!policy.requireTravelRule) return false;
     const thresholdDisplay = Number(policy.travelRuleThreshold) / 1e6;
-    return thresholdDisplay > 0 && amountNum >= thresholdDisplay;
+    // threshold == 0 means ALL settlements require Travel Rule data
+    return thresholdDisplay === 0 || amountNum >= thresholdDisplay;
   }, [policy.requireTravelRule, policy.travelRuleThreshold, amountNum]);
 
   const travelRuleValid = !travelRuleRequired || (
