@@ -90,7 +90,7 @@ export function PolicyForm({ policy, onSuccess }: PolicyFormProps) {
             ? requireTravelRule
             : undefined,
         travelRuleThreshold:
-          !isNaN(threshVal) && threshVal > 0
+          !isNaN(threshVal)
             ? BigInt(Math.floor(threshVal * 1e6))
             : undefined,
       });

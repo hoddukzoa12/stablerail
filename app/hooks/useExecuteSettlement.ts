@@ -52,11 +52,11 @@ export interface SettlementExecuteParams {
   travelRuleData?: TravelRuleInput;
 }
 
-/** Encode a string into a fixed-size byte array, padded with zeros. */
+/** Encode a string into a fixed-size byte array, truncated by byte length, padded with zeros. */
 function stringToFixedBytes(s: string, size: number): Uint8Array {
   const buf = new Uint8Array(size);
-  const encoded = new TextEncoder().encode(s.slice(0, size));
-  buf.set(encoded);
+  const encoded = new TextEncoder().encode(s);
+  buf.set(encoded.length <= size ? encoded : encoded.slice(0, size));
   return buf;
 }
 
