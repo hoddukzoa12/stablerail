@@ -37,6 +37,13 @@ function encodeInstruction(params: ManageKycEntryParams): Uint8Array {
   const encoder = getAddressEncoder();
   const memberBytes = encoder.encode(params.member as Address);
 
+  // Validate jurisdiction is exactly 2 ASCII characters
+  if (params.jurisdiction.length !== 2) {
+    throw new Error(
+      `Jurisdiction must be a 2-character ISO code, got "${params.jurisdiction}"`,
+    );
+  }
+
   const buf = new ArrayBuffer(53);
   const bytes = new Uint8Array(buf);
   const view = new DataView(buf);

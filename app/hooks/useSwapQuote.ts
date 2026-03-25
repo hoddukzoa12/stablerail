@@ -55,9 +55,13 @@ export function useSwapQuote(
   const [isComputing, setIsComputing] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Stable reference for ticks to avoid re-triggering on every render
+  // Stable reference for ticks to avoid re-triggering on every render.
+  // We track tick count separately so the effect re-fires when ticks
+  // are added/removed without resetting the debounce on every poll cycle
+  // (which produces a new array reference each time).
   const ticksRef = useRef<TickData[] | undefined>(ticks);
   ticksRef.current = ticks;
+  const tickCount = ticks?.length ?? 0;
 
   useEffect(() => {
     // Clear previous timer
@@ -135,12 +139,11 @@ export function useSwapQuote(
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-    // Note: `ticks` is intentionally excluded from the dependency array.
-    // ticksRef.current always holds the latest value (updated on line 60),
-    // and including `ticks` here causes spurious debounce resets on every
-    // tick poll cycle since rawTicks gets a new array reference each time.
+    // `ticks` array reference is excluded (changes every poll cycle),
+    // but `tickCount` triggers recomputation when ticks are added/removed.
+    // ticksRef.current always holds the latest tick data.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pool, tokenInIndex, tokenOutIndex, amountIn, decimals]);
+  }, [pool, tokenInIndex, tokenOutIndex, amountIn, decimals, tickCount]);
 
   return { quote, error, isComputing };
 }
