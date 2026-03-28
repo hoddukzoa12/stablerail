@@ -194,8 +194,10 @@ Where:
 | `\|\|w\|\|² = Σxᵢ²-(Σxᵢ)²/n` | `ReserveState::w_norm_squared()` | `math/reserve_state.rs` |
 | check invariant (0.1% tol) | `Sphere::check_invariant()` | `math/sphere.rs` |
 | Q64.64 fixed-point | `FixedPoint` (i128, FRAC_BITS=64) | `math/fixed_point.rs` |
-| Tick structure | _Issue #4 (planned)_ | — |
-| Torus invariant | _Issue #8 (planned)_ | — |
+| Tick structure (k bounds, x_min/x_max) | `tick_math.rs`, `create_tick` | `math/tick.rs`, `instructions/create_tick.rs` |
+| Alpha-based tick crossing detection | `compute_alpha()`, trade segmentation loop | `math/torus.rs`, `instructions/execute_swap.rs` |
+| Analytical swap solver (quadratic) | `compute_amount_out_analytical()` | `math/newton.rs` |
+| Torus consolidation (full) | _Post-MVP ([#59](https://github.com/hoddukzoa12/stablerail/issues/59))_ | — |
 
 ---
 

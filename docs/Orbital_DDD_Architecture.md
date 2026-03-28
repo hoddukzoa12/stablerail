@@ -1233,6 +1233,10 @@ pub struct AuditEntry {
 | Allowlist | Settlement을 실행할 수 있는 wallet 목록 |
 | Role | ~~Admin, Operator, Viewer 중 하나~~ → MVP에서 스킵. `policy.authority`=Admin, `allowlist.contains()`=Operator로 암묵적 분리 |
 | Limit | 거래 금액 또는 빈도 제한 |
+| KYC Entry | 멤버별 KYC 인증 상태, 만료일, 위험점수, 관할권, AML 클리어런스 |
+| Travel Rule | FATF 규정에 따른 송금인/수취인 식별 데이터. threshold 이상 settlement에 필수 |
+| Risk Score | 0-100 범위의 AML/KYT 위험 점수. Policy의 max_risk_score 이하여야 실행 가능 |
+| Jurisdiction | 2자리 ISO 국가코드. Policy에 설정된 허용 관할권 목록과 대조 |
 
 ```
 programs/orbital/src/contexts/policy/
@@ -1241,7 +1245,8 @@ programs/orbital/src/contexts/policy/
 │   ├── aggregates/
 │   │   └── policy.rs              # Policy Aggregate Root
 │   ├── entities/
-│   │   └── allowlist_entry.rs     # Allowlist member
+│   │   ├── allowlist_entry.rs     # Allowlist member
+│   │   └── kyc_entry.rs           # KYC/AML 인증 레코드 (PDA: ["kyc_entry", policy, member])
 │   ├── value_objects/
 │   │   ├── role.rs                # (MVP: 스킵) authority + allowlist.contains()로 암묵적 분리
 │   │   ├── token_whitelist.rs     # 허용 토큰 목록
@@ -1256,7 +1261,8 @@ programs/orbital/src/contexts/policy/
 ├── instructions/
 │   ├── create_policy.rs
 │   ├── update_policy.rs
-│   └── manage_allowlist.rs
+│   ├── manage_allowlist.rs
+│   └── manage_kyc_entry.rs       # KYC 등록/갱신 (status, expiry, risk_score, jurisdiction, aml_cleared)
 └── accounts.rs
 ```
 
@@ -1282,6 +1288,14 @@ pub struct Policy {
 
     // --- Access Control ---
     pub allowlist: Vec<AllowlistEntry>,
+
+    // --- KYC/AML Compliance ---
+    pub kyc_required: bool,                  // KYC 검증 필수 여부
+    pub max_risk_score: u8,                  // 허용 최대 위험점수 (0-100)
+    pub require_travel_rule: bool,           // FATF Travel Rule 활성화
+    pub travel_rule_threshold: u64,          // Travel Rule 적용 기준 금액 (0이면 모든 거래)
+    pub jurisdiction_count: u8,              // 허용 관할권 수
+    pub allowed_jurisdictions: [[u8; 2]; 10], // ISO 2자리 국가코드 (최대 10개)
 
     // --- Status ---
     pub is_active: bool,
@@ -1328,6 +1342,13 @@ impl Policy {
             new_daily <= self.daily_limit,
             PolicyError::ExceedsDailyLimit
         );
+
+        // 6. KYC/AML 검증 (kyc_required 활성 시)
+        //    - KycEntry 상태: Verified, 미만료
+        //    - risk_score <= max_risk_score
+        //    - aml_cleared == true
+        //    - jurisdiction이 허용 목록에 포함
+        //    - Travel Rule: threshold==0이면 모든 거래, 아니면 금액 >= threshold일 때 필수
 
         Ok(())
     }
@@ -1491,6 +1512,12 @@ DDD의 Aggregate/Entity를 Solana의 Account로 매핑한다. 모든 PDA는 **�
 │ │  Allowlist Entry Account (PDA) — per member     │ │
 │ │  ├── seeds: ["member", policy_id, wallet]       │ │
 │ │  ├── role, added_at                             │ │
+│ │                                                 │ │
+│ │  KYC Entry Account (PDA) — per member           │ │
+│ │  ├── seeds: ["kyc_entry", policy, member]       │ │
+│ │  ├── kyc_status, kyc_expiry, risk_score         │ │
+│ │  ├── jurisdiction [u8;2], aml_cleared           │ │
+│ │  └── Travel Rule data (optional)                │ │
 │ └─────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────┘
 ```
