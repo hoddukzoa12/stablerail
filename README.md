@@ -1,11 +1,11 @@
 <p align="center">
-  <img src="logo.png" alt="Orbital Settlement Protocol" width="160" />
+  <img src="logo.png" alt="StableRail" width="160" />
 </p>
 
-<h1 align="center">Orbital Settlement Protocol</h1>
+<h1 align="center">StableRail: Orbital AMM on Solana</h1>
 
 <p align="center">
-  <strong>Paradigm's Orbital AMM on Solana — with institutional settlement</strong>
+  <strong>Paradigm's Orbital AMM — multi-asset stablecoin pool with concentrated liquidity & institutional settlement</strong>
 </p>
 
 <p align="center">
