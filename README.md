@@ -19,7 +19,7 @@
   <img src="https://img.shields.io/badge/Solana-Devnet-blue?logo=solana" />
   <img src="https://img.shields.io/badge/Anchor-0.31.1-purple" />
   <img src="https://img.shields.io/badge/Next.js-16-black?logo=next.js" />
-  <img src="https://img.shields.io/badge/License-MIT-green" />
+  <img src="https://img.shields.io/badge/License-AGPL--3.0-blue" />
 </p>
 
 ---
@@ -284,4 +284,4 @@ This project was built for [StableHacks 2026](https://dorahacks.io/). Contributi
 
 ## License
 
-MIT
+[AGPL-3.0](LICENSE)
