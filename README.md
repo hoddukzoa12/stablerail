@@ -39,6 +39,7 @@ This repository is the **first Solana-native implementation** of the Orbital AMM
 | **Depeg Isolation** | When an asset depegs, its tick flips to `Boundary` — isolating risk from other LPs |
 | **Trade Segmentation** | Multi-tick swap execution with boundary detection and automatic tick crossing |
 | **Institutional Settlement** | Policy engine, allowlists, daily volume limits, and on-chain audit trails |
+| **KYC/AML Compliance** | On-chain KYC registry, risk scoring, jurisdiction filtering, FATF Travel Rule |
 
 ---
 
@@ -71,12 +72,13 @@ orbital/
 │   ├── create_policy       # Define settlement policy
 │   ├── update_policy       # Modify policy parameters
 │   ├── manage_allowlist    # Add/remove institutional participants
+│   ├── manage_kyc_entry    # KYC/KYT/AML registry per member
 │   ├── execute_settlement  # Policy-checked institutional swap
 │   └── close_pool          # Authority-only pool shutdown
 │
 ├── state/              # Account definitions (PDA)
 │   ├── pool, position, tick
-│   ├── policy, allowlist
+│   ├── policy, allowlist, kyc_entry
 │   └── settlement, audit_entry
 │
 ├── errors.rs           # Program error codes
@@ -115,9 +117,9 @@ Next.js 16 app with real-time Solana devnet integration:
 |------|----------|
 | **Swap** | Token selection, real-time quote with tick-aware calculator, slippage settings |
 | **Dashboard** | Pool overview, reserve chart, LP positions, tick selector for concentrated liquidity |
-| **Settlement** | Policy-compliant institutional swap form, compliance preview, audit trail table |
+| **Settlement** | Policy-compliant institutional swap form, Travel Rule data input, compliance preview |
 | **Faucet** | Devnet SPL token faucet (USDC, USDT, PYUSD) |
-| **Admin** | Pool initialization, tick creation, policy management |
+| **Admin** | Policy management (KYC toggle, risk score, Travel Rule threshold), KYC registry, allowlist |
 
 ---
 
@@ -195,8 +197,9 @@ Comprehensive analysis against the [Paradigm Orbital paper](https://www.paradigm
 | Tick consolidation (r_c = Σrᵢ) | ⚠️ Planned | Individual tick tracking, no aggregation |
 | Virtual reserve amplification | ⚠️ Planned | x_min computed but not used in swap math ([#36](https://github.com/hoddukzoa12/stablerail/issues/36)) |
 | Per-tick fee distribution | ⚠️ Planned | Fees tracked globally, no per-tick LP harvest |
+| KYC/KYT/AML compliance | ✅ Complete | On-chain KYC registry, risk scoring, jurisdiction filter, Travel Rule |
 
-> **Note**: The MVP prioritizes correctness of the sphere invariant and trade segmentation infrastructure. Virtual reserve amplification (the mechanism that converts concentrated liquidity into reduced slippage) is tracked in [issue #36](https://github.com/hoddukzoa12/stablerail/issues/36) for post-MVP implementation.
+> **Note**: The MVP prioritizes correctness of the sphere invariant, trade segmentation, and institutional compliance. Virtual reserve amplification (the mechanism that converts concentrated liquidity into reduced slippage) is tracked in [issue #59](https://github.com/hoddukzoa12/stablerail/issues/59). Per-tick fee distribution and LP fee claim are post-MVP ([#48](https://github.com/hoddukzoa12/stablerail/issues/48)).
 
 ---
 
@@ -210,7 +213,7 @@ stablerail/
 │
 ├── app/                    # Next.js frontend
 │   ├── components/         # React components (swap, dashboard, settlement)
-│   ├── hooks/              # Custom hooks (usePool, useSwapQuote, usePoolTicks)
+│   ├── hooks/              # Custom hooks (usePool, useSwapQuote, usePoolTicks, useKycEntries, useExecuteSettlement)
 │   └── lib/                # Math library, config, deserializers
 │
 ├── scripts/                # Deployment & bootstrap scripts
@@ -238,6 +241,30 @@ stablerail/
 | Charts | Recharts |
 | Wallet | @solana/kit, Phantom |
 | Network | Solana Devnet |
+
+---
+
+## Roadmap
+
+### Remaining for Hackathon Submission
+
+| Issue | Title | Priority |
+|-------|-------|----------|
+| [#25](https://github.com/hoddukzoa12/stablerail/issues/25) | DoraHacks submission and final cleanup | P0 |
+| [#23](https://github.com/hoddukzoa12/stablerail/issues/23) | Demo video production (3-min format) | P0 |
+| [#24](https://github.com/hoddukzoa12/stablerail/issues/24) | README and project documentation | P0 |
+| [#21](https://github.com/hoddukzoa12/stablerail/issues/21) | E2E integration testing | P1 |
+
+### Post-MVP
+
+| Issue | Title | Description |
+|-------|-------|-------------|
+| [#59](https://github.com/hoddukzoa12/stablerail/issues/59) | Virtual reserve amplification | Use x_min from concentrated ticks to amplify swap math, reducing slippage |
+| [#48](https://github.com/hoddukzoa12/stablerail/issues/48) | LP fee claim mechanism | Per-tick fee distribution and `claim_fees` instruction |
+| [#47](https://github.com/hoddukzoa12/stablerail/issues/47) | close_pool guard fix | Seed liquidity permanently locks pool closure |
+| [#43](https://github.com/hoddukzoa12/stablerail/issues/43) | i256 precision migration | Upgrade from Q64.64 (i128) to unlimited precision |
+| [#42](https://github.com/hoddukzoa12/stablerail/issues/42) | Decimal normalization | Production-scale deposit handling across different token decimals |
+| [#36](https://github.com/hoddukzoa12/stablerail/issues/36) | Depeg rebalance protection | Prevent fee-free liquidity extraction during depeg events |
 
 ---
 
