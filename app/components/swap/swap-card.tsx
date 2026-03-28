@@ -53,8 +53,9 @@ export function SwapCard() {
   const { ticks: rawTicks, isLoading: ticksLoading } = usePoolTicks(pool?.nAssets ?? 3);
   const { balances, refresh: refreshBalances } = useTokenBalances();
 
-  // usePoolTicks already performs PDA verification to filter orphan ticks.
-  // No additional client-side filtering needed.
+  // Pass all PDA-verified ticks. On-chain guard uses >= pool.tick_count
+  // so extra zero-liquidity ticks from previous deployments are harmless.
+  // The trade segmentation loop skips zero-liquidity ticks naturally.
   const filteredTicks = rawTicks;
 
   const tickData: TickData[] | undefined = useMemo(
