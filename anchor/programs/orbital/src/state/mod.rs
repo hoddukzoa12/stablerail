@@ -5,6 +5,7 @@ pub mod policy;
 pub mod allowlist;
 pub mod settlement;
 pub mod audit_entry;
+pub mod kyc_entry;
 
 pub use pool::*;
 pub use tick::*;
@@ -13,3 +14,4 @@ pub use policy::*;
 pub use allowlist::*;
 pub use settlement::*;
 pub use audit_entry::*;
+pub use kyc_entry::*;

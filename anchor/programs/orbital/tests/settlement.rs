@@ -65,6 +65,7 @@ fn build_execute_settlement_data(
     data.extend_from_slice(&amount.to_le_bytes());
     data.extend_from_slice(&min_amount_out.to_le_bytes());
     data.extend_from_slice(&nonce.to_le_bytes());
+    data.push(0); // Option<TravelRuleData>::None
     data
 }
 

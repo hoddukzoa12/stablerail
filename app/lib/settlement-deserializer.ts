@@ -63,6 +63,27 @@ export interface PolicyStateData {
   isActive: boolean;
   createdAt: number;
   updatedAt: number;
+  // KYC/KYT/AML compliance fields (carved from _reserved)
+  maxRiskScore: number;
+  requireTravelRule: boolean;
+  travelRuleThreshold: bigint;
+  allowedJurisdictions: string[];
+  jurisdictionCount: number;
+  kycRequired: boolean;
+}
+
+export type KycStatusType = "Pending" | "Verified" | "Expired" | "Revoked";
+
+export interface KycEntryData {
+  bump: number;
+  policy: string;
+  address: string;
+  kycStatus: KycStatusType;
+  kycExpiry: number;
+  riskScore: number;
+  jurisdiction: string;
+  amlCleared: boolean;
+  updatedAt: number;
 }
 
 export interface AllowlistStateData {
@@ -125,7 +146,13 @@ export interface AuditRecord {
  *   129 is_active         bool      1
  *   130 created_at        i64 LE    8
  *   138 updated_at        i64 LE    8
- *   146 _reserved         [u8; 64]  64
+ *   146 max_risk_score    u8         1
+ *   147 require_travel    bool       1
+ *   148 travel_threshold  u64 LE     8
+ *   156 jurisdictions     [[u8;2];16] 32
+ *   188 jurisdiction_cnt  u8         1
+ *   189 kyc_required      bool       1
+ *   190 _reserved         [u8; 20]  20
  *   Total: 210 bytes
  */
 export function deserializePolicyState(data: Uint8Array): PolicyStateData {
@@ -139,6 +166,20 @@ export function deserializePolicyState(data: Uint8Array): PolicyStateData {
   const maxTradeAmountRaw = readI128LE(view, 73);
   const maxDailyVolumeRaw = readI128LE(view, 89);
   const currentDailyVolumeRaw = readI128LE(view, 105);
+
+  // KYC/KYT/AML fields (offset 146+)
+  const maxRiskScore = data[146];
+  const requireTravelRule = data[147] !== 0;
+  const travelRuleThreshold = view.getBigUint64(148, true);
+  const jurisdictionCount = data[188];
+  const kycRequired = data[189] !== 0;
+
+  const allowedJurisdictions: string[] = [];
+  for (let i = 0; i < jurisdictionCount; i++) {
+    const j0 = data[156 + i * 2];
+    const j1 = data[156 + i * 2 + 1];
+    allowedJurisdictions.push(String.fromCharCode(j0, j1));
+  }
 
   return {
     bump: data[8],
@@ -154,6 +195,12 @@ export function deserializePolicyState(data: Uint8Array): PolicyStateData {
     isActive: data[129] !== 0,
     createdAt: Number(view.getBigInt64(130, true)),
     updatedAt: Number(view.getBigInt64(138, true)),
+    maxRiskScore,
+    requireTravelRule,
+    travelRuleThreshold,
+    allowedJurisdictions,
+    jurisdictionCount,
+    kycRequired,
   };
 }
 
@@ -305,10 +352,66 @@ export function deserializeAuditEntryState(
   };
 }
 
+// ── KycEntryState Deserializer ──
+
+// sha256("account:KycEntryState")[..8]
+const KYC_ENTRY_DISCRIMINATOR = new Uint8Array([151, 22, 100, 199, 7, 241, 63, 39]);
+const KYC_ENTRY_SIZE = 126;
+
+const KYC_STATUS_MAP: Record<number, KycStatusType> = {
+  0: "Pending",
+  1: "Verified",
+  2: "Expired",
+  3: "Revoked",
+};
+
+/**
+ * Deserialize KycEntryState from raw account bytes.
+ *
+ * Byte layout:
+ *   0   discriminator  [u8; 8]   8
+ *   8   bump           u8        1
+ *   9   policy         Pubkey    32
+ *   41  address        Pubkey    32
+ *   73  kyc_status     u8        1
+ *   74  kyc_expiry     i64 LE    8
+ *   82  risk_score     u8        1
+ *   83  jurisdiction   [u8; 2]   2
+ *   85  aml_cleared    bool      1
+ *   86  updated_at     i64 LE    8
+ *   94  _reserved      [u8; 32]  32
+ *   Total: 126 bytes
+ */
+export function deserializeKycEntryState(data: Uint8Array): KycEntryData {
+  if (data.length < KYC_ENTRY_SIZE) {
+    throw new Error(`KycEntryState: expected >= ${KYC_ENTRY_SIZE} bytes, got ${data.length}`);
+  }
+  verifyDiscriminator(data, KYC_ENTRY_DISCRIMINATOR, "KycEntryState");
+
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+
+  const statusByte = data[73];
+  const j0 = data[83];
+  const j1 = data[84];
+
+  return {
+    bump: data[8],
+    policy: readPubkey(data, 9),
+    address: readPubkey(data, 41),
+    kycStatus: KYC_STATUS_MAP[statusByte] ?? "Pending",
+    kycExpiry: Number(view.getBigInt64(74, true)),
+    riskScore: data[82],
+    jurisdiction: String.fromCharCode(j0, j1),
+    amlCleared: data[85] !== 0,
+    updatedAt: Number(view.getBigInt64(86, true)),
+  };
+}
+
 // Re-export discriminators for use in getProgramAccounts filters
 export {
   POLICY_DISCRIMINATOR,
   ALLOWLIST_DISCRIMINATOR,
   SETTLEMENT_DISCRIMINATOR,
   AUDIT_DISCRIMINATOR,
+  KYC_ENTRY_DISCRIMINATOR,
 };

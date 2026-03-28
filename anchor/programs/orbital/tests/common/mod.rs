@@ -287,6 +287,14 @@ pub fn build_update_policy_data(
             data.push(v as u8);
         }
     }
+
+    // New KYC/KYT/AML compliance fields — all None for existing tests
+    data.push(0); // kyc_required: Option<bool> = None
+    data.push(0); // max_risk_score: Option<u8> = None
+    data.push(0); // require_travel_rule: Option<bool> = None
+    data.push(0); // travel_rule_threshold: Option<u64> = None
+    data.push(0); // allowed_jurisdictions: Option<Vec<[u8; 2]>> = None
+
     data
 }
 

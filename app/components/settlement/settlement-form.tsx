@@ -10,7 +10,7 @@ import { TOKENS } from "../../lib/tokens";
 import { formatAmount } from "../../lib/format-utils";
 import type { PolicyStateData } from "../../lib/settlement-deserializer";
 import { PolicyCompliancePreview } from "./policy-compliance-preview";
-import { ArrowDownUp } from "lucide-react";
+import { ArrowDownUp, AlertTriangle } from "lucide-react";
 
 interface SettlementFormProps {
   policy: PolicyStateData;
@@ -30,6 +30,12 @@ export function SettlementForm({ policy, tokenBalances, onSuccess }: SettlementF
   const [amount, setAmount] = useState("");
   const [slippage, setSlippage] = useState("0.5");
 
+  // Travel Rule fields
+  const [originatorName, setOriginatorName] = useState("");
+  const [beneficiaryName, setBeneficiaryName] = useState("");
+  const [originatorVasp, setOriginatorVasp] = useState("");
+  const [purpose, setPurpose] = useState("SETTL");
+
   const tokenIn = TOKENS[tokenInIndex];
   const tokenOut = TOKENS[tokenOutIndex];
 
@@ -48,6 +54,18 @@ export function SettlementForm({ policy, tokenBalances, onSuccess }: SettlementF
 
   const balanceIn = tokenBalances[tokenIn.symbol] ?? 0n;
   const balanceDisplay = Number(balanceIn) / 10 ** tokenIn.decimals;
+
+  // Determine if Travel Rule data is required for this amount
+  const travelRuleRequired = useMemo(() => {
+    if (!policy.requireTravelRule) return false;
+    const thresholdDisplay = Number(policy.travelRuleThreshold) / 1e6;
+    // threshold == 0 means ALL settlements require Travel Rule data
+    return thresholdDisplay === 0 || amountNum >= thresholdDisplay;
+  }, [policy.requireTravelRule, policy.travelRuleThreshold, amountNum]);
+
+  const travelRuleValid = !travelRuleRequired || (
+    originatorName.trim().length > 0 && beneficiaryName.trim().length > 0
+  );
 
   function handleSwapDirection(): void {
     setTokenInIndex(tokenOutIndex);
@@ -76,6 +94,15 @@ export function SettlementForm({ policy, tokenBalances, onSuccess }: SettlementF
         vaultOut: tokenOut.vault,
         mintIn: tokenIn.mint,
         mintOut: tokenOut.mint,
+        kycRequired: policy.kycRequired,
+        travelRuleData: travelRuleRequired
+          ? {
+              originatorName: originatorName.trim(),
+              beneficiaryName: beneficiaryName.trim(),
+              originatorVasp: originatorVasp.trim(),
+              purpose: purpose.trim(),
+            }
+          : undefined,
       });
       setAmount("");
       onSuccess();
@@ -189,12 +216,84 @@ export function SettlementForm({ policy, tokenBalances, onSuccess }: SettlementF
             </div>
           )}
 
+          {travelRuleRequired && (
+            <div className="rounded-xl border border-warning/30 bg-warning/5 p-4">
+              <div className="mb-3 flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-warning" />
+                <span className="text-sm font-medium text-warning">
+                  Travel Rule Required
+                </span>
+              </div>
+              <p className="mb-3 text-xs text-text-tertiary">
+                {Number(policy.travelRuleThreshold) === 0
+                  ? "All settlements require FATF Travel Rule data."
+                  : `Settlements of ${formatAmount(Number(policy.travelRuleThreshold) / 1e6)}+ USD require FATF Travel Rule data.`}
+              </p>
+              <div className="space-y-3">
+                <div>
+                  <label className="mb-1 block text-xs text-text-secondary">
+                    Originator Name *
+                  </label>
+                  <input
+                    type="text"
+                    value={originatorName}
+                    onChange={(e) => setOriginatorName(e.target.value)}
+                    placeholder="Sending entity or individual"
+                    className="w-full rounded-lg bg-surface-2 px-3 py-2 text-sm text-text-primary outline-none focus:ring-1 focus:ring-brand-primary"
+                    maxLength={64}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-text-secondary">
+                    Beneficiary Name *
+                  </label>
+                  <input
+                    type="text"
+                    value={beneficiaryName}
+                    onChange={(e) => setBeneficiaryName(e.target.value)}
+                    placeholder="Receiving entity or individual"
+                    className="w-full rounded-lg bg-surface-2 px-3 py-2 text-sm text-text-primary outline-none focus:ring-1 focus:ring-brand-primary"
+                    maxLength={64}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-text-secondary">
+                    Originator VASP (LEI/DID)
+                  </label>
+                  <input
+                    type="text"
+                    value={originatorVasp}
+                    onChange={(e) => setOriginatorVasp(e.target.value)}
+                    placeholder="e.g. 529900T8BM49AURSDO55"
+                    className="w-full rounded-lg bg-surface-2 px-3 py-2 text-sm text-text-primary outline-none focus:ring-1 focus:ring-brand-primary"
+                    maxLength={32}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-text-secondary">
+                    Purpose
+                  </label>
+                  <select
+                    value={purpose}
+                    onChange={(e) => setPurpose(e.target.value)}
+                    className="w-full rounded-lg bg-surface-2 px-3 py-2 text-sm text-text-primary outline-none"
+                  >
+                    <option value="SETTL">SETTL — Settlement</option>
+                    <option value="TRADE">TRADE — Trading</option>
+                    <option value="TREAS">TREAS — Treasury</option>
+                    <option value="HEDGE">HEDGE — Hedging</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
+
           <Button
             type="submit"
             variant="gradient"
             size="lg"
             className="w-full"
-            disabled={isSending || amountNum <= 0}
+            disabled={isSending || amountNum <= 0 || !travelRuleValid}
           >
             {isSending ? "Executing Settlement..." : "Execute Settlement"}
           </Button>

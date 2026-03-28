@@ -78,6 +78,13 @@ pub mod orbital {
         instructions::manage_allowlist::handler(ctx, params)
     }
 
+    pub fn manage_kyc_entry(
+        ctx: Context<ManageKycEntry>,
+        params: ManageKycEntryParams,
+    ) -> Result<()> {
+        instructions::manage_kyc_entry::handler(ctx, params)
+    }
+
     // ═══════════════════════════════════════════
     //  Settlement Context — Institutional Settlement
     // ═══════════════════════════════════════════

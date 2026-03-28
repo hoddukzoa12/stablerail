@@ -53,19 +53,21 @@ export function SwapCard() {
   const { ticks: rawTicks, isLoading: ticksLoading } = usePoolTicks(pool?.nAssets ?? 3);
   const { balances, refresh: refreshBalances } = useTokenBalances();
 
-  // Convert TickInfo[] from usePoolTicks to TickData[] for the swap calculator.
-  // Memoized to avoid creating new array references on every render.
+  // usePoolTicks already performs PDA verification to filter orphan ticks.
+  // No additional client-side filtering needed.
+  const filteredTicks = rawTicks;
+
   const tickData: TickData[] | undefined = useMemo(
     () =>
-      rawTicks.length > 0
-        ? rawTicks.map((t) => ({
+      filteredTicks.length > 0
+        ? filteredTicks.map((t) => ({
             kRaw: t.kRaw,
             status: t.status,
             liquidityRaw: t.liquidityRaw,
             reservesRaw: t.reservesRaw,
           }))
         : undefined,
-    [rawTicks],
+    [filteredTicks],
   );
 
   // Suppress quote computation while tick data is still loading for a pool
@@ -156,7 +158,7 @@ export function SwapCard() {
         vaultOut: tokenOut.vault,
         userAtaIn,
         userAtaOut,
-        tickAddresses: rawTicks.map((t) => t.address),
+        tickAddresses: filteredTicks.map((t) => t.address),
       });
 
       setTxResult(sig);
@@ -175,7 +177,7 @@ export function SwapCard() {
     slippageBps,
     execute,
     refreshBalances,
-    rawTicks,
+    filteredTicks,
   ]);
 
   // Connect wallet handler

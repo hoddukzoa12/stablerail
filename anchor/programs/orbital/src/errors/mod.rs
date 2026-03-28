@@ -151,4 +151,26 @@ pub enum OrbitalError {
 
     #[msg("Cannot close tick: liquidity is non-zero")]
     TickHasLiquidity,
+
+    // ── KYC/KYT/AML Compliance Errors ──
+    #[msg("KYC status is not Verified")]
+    KycNotVerified,
+
+    #[msg("KYC verification has expired")]
+    KycExpired,
+
+    #[msg("Risk score exceeds policy threshold")]
+    RiskScoreExceeded,
+
+    #[msg("AML clearance required")]
+    AmlNotCleared,
+
+    #[msg("Jurisdiction not in allowed list")]
+    JurisdictionNotAllowed,
+
+    #[msg("Travel Rule data required for this settlement amount")]
+    TravelRuleRequired,
+
+    #[msg("Invalid risk score (must be 0-100)")]
+    InvalidRiskScore,
 }

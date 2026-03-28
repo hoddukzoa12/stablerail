@@ -7,6 +7,10 @@ import { PolicyStatusCard } from "../components/admin/policy-status-card";
 import { PolicyForm } from "../components/admin/policy-form";
 import { AllowlistTable } from "../components/admin/allowlist-table";
 import { AllowlistManager } from "../components/admin/allowlist-manager";
+import { KycManagement } from "../components/admin/kyc-management";
+import { KycEntryTable } from "../components/admin/kyc-entry-table";
+import { useManageKycEntry } from "../hooks/useManageKycEntry";
+import { useKycEntries } from "../hooks/useKycEntries";
 import { Shield, AlertTriangle } from "lucide-react";
 
 const PAGE_WRAPPER = "mx-auto max-w-5xl px-4 pt-24";
@@ -35,6 +39,8 @@ export default function AdminPage() {
   const { wallet, status } = useWalletConnection();
   const { policy, isLoading: policyLoading, refresh: refreshPolicy } = usePolicy();
   const { addresses, isLoading: allowlistLoading, refresh: refreshAllowlist } = useAllowlist();
+  const { execute: executeKyc, isSending: kycSending } = useManageKycEntry();
+  const { entries: kycEntries, isLoading: kycLoading, refresh: refreshKyc } = useKycEntries();
 
   const isConnected = status === "connected" && wallet;
   const walletAddress = wallet?.account.address.toString() ?? "";
@@ -85,6 +91,7 @@ export default function AdminPage() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
+        {/* Left column: Policy settings */}
         <div className="space-y-6">
           <PolicyStatusCard policy={policy} />
           {isAuthority && (
@@ -92,7 +99,18 @@ export default function AdminPage() {
           )}
         </div>
 
+        {/* Right column: KYC (primary) + Allowlist (legacy fallback) */}
         <div className="space-y-6">
+          {isAuthority && (
+            <KycManagement
+              onSubmit={async (params) => {
+                await executeKyc(params);
+                refreshKyc();
+              }}
+              isSending={kycSending}
+            />
+          )}
+          <KycEntryTable entries={kycEntries} isLoading={kycLoading} />
           {isAuthority && (
             <AllowlistManager onSuccess={refreshAllowlist} />
           )}

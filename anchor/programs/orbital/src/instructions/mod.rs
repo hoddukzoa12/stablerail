@@ -9,6 +9,7 @@ pub mod create_policy;
 pub mod update_policy;
 pub mod manage_allowlist;
 pub mod execute_settlement;
+pub mod manage_kyc_entry;
 pub mod close_pool;
 
 pub use initialize_pool::*;
@@ -21,4 +22,5 @@ pub use create_policy::*;
 pub use update_policy::*;
 pub use manage_allowlist::*;
 pub use execute_settlement::*;
+pub use manage_kyc_entry::*;
 pub use close_pool::*;

@@ -8,8 +8,23 @@ use crate::events::SettlementExecuted;
 use crate::math::newton::compute_amount_out_analytical;
 use crate::math::FixedPoint;
 use crate::state::{
-    AllowlistState, AuditEntryState, PolicyState, PoolState, SettlementState, SettlementStatus,
+    AllowlistState, AuditEntryState, KycEntryState, KycStatus, PolicyState, PoolState,
+    SettlementState, SettlementStatus,
 };
+
+/// Travel Rule payload — per-transfer originator/beneficiary identification
+/// required for settlements above the policy's configured threshold.
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct TravelRuleData {
+    /// Originator name (e.g., institution name), max 64 bytes
+    pub originator_name: [u8; 64],
+    /// Beneficiary name, max 64 bytes
+    pub beneficiary_name: [u8; 64],
+    /// Originator VASP identifier (e.g., LEI or DID), max 32 bytes
+    pub originator_vasp: [u8; 32],
+    /// Transfer purpose code (e.g., b"TRADE", b"SETTL")
+    pub purpose: [u8; 8],
+}
 
 #[derive(AnchorSerialize, AnchorDeserialize)]
 pub struct ExecuteSettlementParams {
@@ -18,6 +33,9 @@ pub struct ExecuteSettlementParams {
     pub amount: u64,
     pub min_amount_out: u64,
     pub nonce: u64,
+    /// Travel Rule data, required when policy.require_travel_rule is true
+    /// and amount >= policy.travel_rule_threshold
+    pub travel_rule_data: Option<TravelRuleData>,
 }
 
 /// Accounts for `execute_settlement`.
@@ -128,9 +146,84 @@ pub fn handler<'info>(
     );
     policy.current_daily_volume = new_daily_volume;
 
-    // ── Validate remaining_accounts ──
+    // ── KYC/KYT/AML compliance checks (when policy.kyc_required is true) ──
+    //
+    // remaining_accounts layout:
+    //   [0..4) = vaults + ATAs (always required)
+    //   [4]    = kyc_entry PDA (required when policy.kyc_required == true)
     let remaining = &ctx.remaining_accounts;
-    require!(remaining.len() == 4, OrbitalError::InvalidRemainingAccounts);
+    let expected_remaining = if policy.kyc_required { 5 } else { 4 };
+    require!(
+        remaining.len() >= expected_remaining,
+        OrbitalError::InvalidRemainingAccounts
+    );
+
+    if policy.kyc_required {
+        // Cache policy compliance fields to avoid borrow conflicts
+        let policy_key = policy.key();
+        let max_risk = policy.max_risk_score;
+        let jur_count = policy.jurisdiction_count as usize;
+        let jur_list = policy.allowed_jurisdictions;
+        let require_travel_rule = policy.require_travel_rule;
+        let travel_rule_threshold = policy.travel_rule_threshold;
+
+        let kyc_acc = &remaining[4];
+        // Validate program ownership (prevents forged accounts)
+        require!(kyc_acc.owner == &crate::ID, OrbitalError::KycNotVerified);
+        let data = kyc_acc.try_borrow_data()?;
+        let mut slice: &[u8] = &data;
+        let kyc_entry = KycEntryState::try_deserialize(&mut slice)
+            .map_err(|_| OrbitalError::KycNotVerified)?;
+
+        // Validate the KYC entry belongs to this policy and executor
+        require!(kyc_entry.policy == policy_key, OrbitalError::KycNotVerified);
+        require!(kyc_entry.address == executor.key(), OrbitalError::KycNotVerified);
+
+        // KYC status must be Verified
+        require!(kyc_entry.kyc_status == KycStatus::Verified, OrbitalError::KycNotVerified);
+
+        // KYC must not be expired
+        require!(kyc_entry.kyc_expiry > clock.unix_timestamp, OrbitalError::KycExpired);
+
+        // Risk score must be within policy threshold
+        require!(kyc_entry.risk_score <= max_risk, OrbitalError::RiskScoreExceeded);
+
+        // AML screening must be cleared
+        require!(kyc_entry.aml_cleared, OrbitalError::AmlNotCleared);
+
+        // Jurisdiction check (only when policy has allowed jurisdictions)
+        if jur_count > 0 {
+            let allowed = jur_list[..jur_count]
+                .iter()
+                .any(|j| *j == kyc_entry.jurisdiction);
+            require!(allowed, OrbitalError::JurisdictionNotAllowed);
+        }
+
+        // Travel Rule enforcement: when enabled, settlements at or above
+        // the threshold require a TravelRuleData payload with non-empty
+        // originator/beneficiary identification per FATF guidelines.
+        // When threshold is 0, ALL settlements require Travel Rule data.
+        if require_travel_rule {
+            if travel_rule_threshold == 0 || params.amount >= travel_rule_threshold {
+                let tr = params
+                    .travel_rule_data
+                    .as_ref()
+                    .ok_or(OrbitalError::TravelRuleRequired)?;
+                // Originator name must not be all zeros
+                require!(
+                    tr.originator_name.iter().any(|&b| b != 0),
+                    OrbitalError::TravelRuleRequired
+                );
+                // Beneficiary name must not be all zeros
+                require!(
+                    tr.beneficiary_name.iter().any(|&b| b != 0),
+                    OrbitalError::TravelRuleRequired
+                );
+            }
+        }
+    }
+
+    // ── Validate remaining_accounts (vaults + ATAs) ──
 
     require!(
         *remaining[0].key == pool.token_vaults[token_in],
